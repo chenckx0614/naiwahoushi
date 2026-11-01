@@ -5,6 +5,7 @@ import naishuGlb from './.build/naishu.glb';
 import { findShotTarget, MILK_RANGE } from './shot-target.js';
 import { hearNoise, stunEnemy, stepEnemy } from './enemy-ai.js';
 import { createGameAudio } from './game-audio.js';
+import { walkDistances } from './walk-distance.js';
 
 /* Level 0 is deliberately self-contained: the main match-3 game only opens/closes it. */
 const screen = document.getElementById('backrooms-screen');
@@ -26,7 +27,7 @@ const ui = {
 };
 const copy = {
   zh: {
-    back:'返回大厅', hp:'生命', milk:'牛奶', stamina:'耐力', rescued:'已救援', find:'寻找迷路的奶鼠',
+    back:'返回大厅', hp:'生命', milk:'牛奶', stamina:'耐力', rescued:'已救援', find:'寻找迷路的奶鼠', routeDistance:'沿路约',
     exit:'奶鼠已救齐，寻找绿色出口', intro:'救出 3 只奶鼠，再找到出口。奶蛋会巡逻，能听见奔跑和泼奶；甩开它后，它还会搜寻一阵。',
     introButton:'进入 LEVEL 0', retry:'重新进入', resume:'继续探索',
     win:'出口找到了', winMsg:'你带着所有奶鼠逃出了 Level 0。',
@@ -43,7 +44,7 @@ const copy = {
     powerOut:'灯光熄灭了',mouseCry:'远处传来奶鼠的叫声',
   },
   en: {
-    back:'BACK TO LOBBY', hp:'HEALTH', milk:'MILK', stamina:'STAMINA', rescued:'RESCUED', find:'FIND THE LOST MICE',
+    back:'BACK TO LOBBY', hp:'HEALTH', milk:'MILK', stamina:'STAMINA', rescued:'RESCUED', find:'FIND THE LOST MICE', routeDistance:'WALK',
     exit:'ALL RESCUED · FIND THE GREEN EXIT', intro:'Rescue three mice, then find the exit. The egg patrols, hears sprinting and milk, and searches after losing sight of you.',
     introButton:'ENTER LEVEL 0', retry:'TRY AGAIN', resume:'RESUME',
     win:'EXIT FOUND', winMsg:'You brought every mouse out of Level 0.',
@@ -77,6 +78,7 @@ let yaw = 0, pitch = 0, px = 1, pz = 1, joyX = 0, joyY = 0, sprintTouch = false;
 let lastTime = 0, stepClock = 0, toastTimer = 0, doorNoticeCooldown=0, spottedNoticeCooldown=0, threatSoundClock=0, rng = Math.random;
 let audioPrefs = {music:true,sfx:true};
 let lastObjective = '';
+let objectiveCache=null;
 let assetPromise, models, entryId = 0, modelProgress=0;
 const modelProgressListeners=new Set();
 const keys = Object.create(null);
@@ -111,15 +113,7 @@ function neighbors(c,z) {
   return [[c+1,z],[c-1,z],[c,z+1],[c,z-1]].filter(([x,y])=>floorAt(x,y));
 }
 function distances(sx,sz) {
-  const dist = Array.from({length:N},()=>Array(N).fill(-1));
-  const q = [[sx,sz]]; dist[sz][sx]=0;
-  for(let i=0;i<q.length;i++) {
-    const [x,z]=q[i];
-    for(const [nx,nz] of neighbors(x,z)) if(dist[nz][nx]<0) {
-      dist[nz][nx]=dist[z][x]+1; q.push([nx,nz]);
-    }
-  }
-  return dist;
+  return walkDistances(grid,sx,sz);
 }
 function route(sx,sz,tx,tz) {
   if(sx===tx && sz===tz) return [];
@@ -336,6 +330,7 @@ function updateExit() {
 function buildWorld() {
   clearWorld();
   const data=generateMap();
+  objectiveCache=null;
   world=new THREE.Group(); scene.add(world);
   const wallTex=texture('wall',1234), floorTex=texture('floor',5678), ceilTex=texture('ceiling',9012);
   floorTex.repeat.set(N/3,N/3); ceilTex.repeat.set(N/3,N/3);
@@ -412,8 +407,11 @@ function hud() {
 }
 function objective() {
   const targets=rescued===GOAL?[exit]:friends;
-  const nearest=targets.length?Math.min(...targets.map(t=>Math.hypot(t.x-px,t.z-pz)*CELL)):0;
-  const label=`${text(rescued===GOAL?'exit':'find')} · ${Math.ceil(nearest)}m`;
+  const sx=Math.round(px),sz=Math.round(pz);
+  if(grid && (!objectiveCache || objectiveCache.x!==sx || objectiveCache.z!==sz))
+    objectiveCache={x:sx,z:sz,steps:distances(sx,sz)};
+  const steps=targets.length && objectiveCache ? Math.min(...targets.map(t=>objectiveCache.steps[t.z]?.[t.x] ?? Infinity)) : 0;
+  const label=`${text(rescued===GOAL?'exit':'find')} · ${text('routeDistance')} ${Math.ceil(steps*CELL)}m`;
   if(label!==lastObjective) {ui.objective.textContent=label;lastObjective=label;}
 }
 function notice(message) {
@@ -536,18 +534,22 @@ function move(dt) {
   const wantsSprint=keys.Shift||sprintTouch;
   if(sprintExhausted && stamina>=35) sprintExhausted=false;
   const sprinting=len>.03 && wantsSprint && !sprintExhausted && stamina>0;
-  stamina=Math.max(0,Math.min(100,stamina+(sprinting?-23:len>.03?8:16)*dt));
-  if(stamina===0) {sprintExhausted=true;sprintTouch=false;}
-  const moving=len>.03,speed=(sprinting?3.55:2.25)/CELL;
-  if(moving) {
+  const speed=(sprinting?3.55:2.25)/CELL;
+  let moved=0;
+  if(len>.03) {
+    const oldX=px,oldZ=pz;
     const dx=(-Math.sin(yaw)*forward+Math.cos(yaw)*strafe)*speed*dt;
     const dz=(-Math.cos(yaw)*forward-Math.sin(yaw)*strafe)*speed*dt;
     if(clearAt(px+dx,pz)) px+=dx;
     if(clearAt(px,pz+dz)) pz+=dz;
-    stepClock+=dt*speed*CELL;
+    moved=Math.hypot(px-oldX,pz-oldZ)*CELL;
+    stepClock+=moved;
     if(stepClock>1.15){stepClock=0;gameAudio.play('step',.3,.92+rng()*.16);
       emitNoise(px,pz,sprinting?5.5:1.8);}
   }
+  const moving=moved>.001;
+  stamina=Math.max(0,Math.min(100,stamina+(moving?(sprinting?-23:8):16)*dt));
+  if(stamina===0) {sprintExhausted=true;sprintTouch=false;}
   camera.position.set(px*CELL,EYE+(moving?Math.sin(elapsed*speed*CELL*9)*.024:0),pz*CELL);
   document.getElementById('br-stamina').textContent=Math.ceil(stamina);
   document.getElementById('br-stamina-wrap').classList.toggle('low',stamina<25);
