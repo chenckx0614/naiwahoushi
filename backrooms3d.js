@@ -12,7 +12,7 @@ const canvas = document.getElementById('br-cv');
 const mask = document.getElementById('br-mask');
 const N = 21;
 const CELL = 1.65;
-const EYE = 1.32;
+const EYE = 1.18;
 const PLAYER_RADIUS = 0.22;
 const GOAL = 3;
 const ui = {
@@ -58,6 +58,9 @@ const text = key => copy[document.documentElement.lang.startsWith('en') ? 'en' :
 
 let renderer, scene, camera, world, wallMesh, grid, exit, exitLight, exitMaterial, exitSignMaterial, exitDoor, torch;
 let exitIndicators=[], exitEdges=[], exitOpening=false, friends = [], enemies = [], raf = 0;
+let scareModel=null, scareTime=0, scareCooldown=0;
+const scareOverlay=document.getElementById('br-scare');
+const endingMusic=document.getElementById('entry-music');
 let fluorescents=[];
 const gameAudio=createGameAudio();
 let open = false, running = false, phase = 'intro', hadPointerLock = false;
@@ -346,7 +349,7 @@ function buildWorld() {
   }
   makeExit();
   friends=data.selected.map((p,i)=>{ const mesh=character('mouse');mesh.position.set(p.x*CELL,0,p.z*CELL);world.add(mesh);return {x:p.x,z:p.z,mesh,phase:i*2.1}; });
-  enemies=data.enemySpots.map((p,i)=>{ const mesh=character('egg');mesh.position.set(p.x*CELL,0,p.z*CELL);world.add(mesh);
+  enemies=data.enemySpots.map((p,i)=>{ const mesh=character('egg');mesh.scale.setScalar(1.25);mesh.position.set(p.x*CELL,0,p.z*CELL);world.add(mesh);
     const eyeMaterial=new THREE.MeshBasicMaterial({color:0xff4438});
     for(const side of [-1,1]) {
       const eye=new THREE.Mesh(new THREE.SphereGeometry(.045,8,6),eyeMaterial);
@@ -429,6 +432,8 @@ function start() {
     buildWorld();hp=100;milk=12;rescued=0;elapsed=0;stepClock=0;
     doorNoticeCooldown=0;spottedNoticeCooldown=0;threatSoundClock=0;
   }
+  clearScare();
+  endingMusic.pause();endingMusic.currentTime=0;
   phase='play';running=true;screen.classList.add('playing');mask.classList.add('hide');
   hadPointerLock=false;
   lastTime=performance.now();gameAudio.start();hud();
@@ -444,10 +449,32 @@ function pause() {
 }
 function end(win) {
   running=false;if(raf){cancelAnimationFrame(raf);raf=0;}
+  clearScare();
   showMask(win?'win':'lose');
   if(document.pointerLockElement===canvas) document.exitPointerLock();
-  gameAudio.play(win?'rescue':'growl',win?.55:.35);
-  setTimeout(()=>{if(!running) gameAudio.pause();},800);
+  gameAudio.pause();
+  if(win) {
+    endingMusic.currentTime=0;
+    endingMusic.play().catch(()=>{});
+  } else gameAudio.play('growl',.35);
+}
+function clearScare() {
+  scareTime=0;
+  if(scareModel) {camera?.remove(scareModel);scareModel=null;}
+  scareOverlay.classList.remove('active');
+}
+function triggerScare(enemy) {
+  if(scareCooldown>0 || !running) return;
+  clearScare();
+  scareCooldown=12;scareTime=.62;
+  scareModel=enemy.mesh.clone(true);
+  scareModel.position.set(0,-.87,-.65);
+  scareModel.rotation.set(0,Math.PI,0);
+  scareModel.scale.setScalar(2.35);
+  camera.add(scareModel);
+  scareOverlay.classList.add('active');
+  gameAudio.play('growl',.9,.55);
+  damageFlash=.3;
 }
 function shoot() {
   if(!running) return;
@@ -519,11 +546,19 @@ function updateEnemies(dt) {
     ring.material.color.setHex(e.state==='stunned'?0x8cd8ff:
       e.state==='chase'?0xff483d:e.state==='alert'?0xffb54b:0xc94634);
     ring.material.opacity=e.state==='chase'?.5:e.state==='alert'?.35:e.state==='stunned'?.22:.1;
-    const scale=e.mesh.scale.x+(1-e.mesh.scale.x)*Math.min(1,dt*6);
+    const scale=e.mesh.scale.x+(1.25-e.mesh.scale.x)*Math.min(1,dt*6);
     e.mesh.scale.setScalar(scale);
+    if(e.state==='chase' && scareCooldown<=0 &&
+      Math.hypot(e.x-px,e.z-pz)*CELL<1.65 && lineClear(e.x,e.z,px,pz)) triggerScare(e);
     if(result.attacked) {
+      triggerScare(e);
       hp-=20;damageFlash=.35;gameAudio.play('growl',.42,.72);hud();
-      if(hp<=0){end(false);return;}
+      if(hp<=0){
+        running=false;
+        const deathEntry=entryId;
+        setTimeout(()=>{if(open && entryId===deathEntry && phase==='play') end(false);},550);
+        return;
+      }
     }
   }
 }
@@ -556,6 +591,8 @@ function frame(t) {
   const dt=Math.min(.05,(t-lastTime)/1000||0);lastTime=t;
   if(document.hidden){raf=requestAnimationFrame(frame);return;}
   elapsed+=dt;move(dt);
+  scareCooldown=Math.max(0,scareCooldown-dt);
+  if(scareTime>0) {scareTime-=dt;if(scareTime<=0) clearScare();}
   if(!running) return;
   if(exitOpening) exitDoor.position.y=Math.min(2.7,exitDoor.position.y+dt*1.7);
   updateEnemies(dt);
@@ -608,6 +645,7 @@ function leave() {
   if(raf){cancelAnimationFrame(raf);raf=0;}
   if(document.pointerLockElement===canvas) document.exitPointerLock();
   gameAudio.stop();
+  clearScare();endingMusic.pause();endingMusic.currentTime=0;
   clearWorld();
   Object.keys(keys).forEach(k=>delete keys[k]);joyX=joyY=0;sprintTouch=false;
 }

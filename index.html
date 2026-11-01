@@ -78,6 +78,10 @@
   .br-vignette,.br-scanlines { position:absolute; inset:0; pointer-events:none; z-index:2; }
   .br-vignette { background:radial-gradient(ellipse at center,transparent 40%,rgba(0,0,0,.54) 100%); }
   .br-scanlines { background:repeating-linear-gradient(0deg,rgba(0,0,0,.075) 0 1px,transparent 1px 4px); opacity:.48; }
+  .br-scare { position:absolute; inset:0; z-index:6; pointer-events:none; opacity:0;
+    background:radial-gradient(circle,transparent 12%,rgba(115,0,0,.35) 55%,#080000 100%); }
+  .br-scare.active { animation:br-scare-flash .65s steps(2,end) both; }
+  @keyframes br-scare-flash { 0%{opacity:0} 10%{opacity:1;background-color:rgba(255,255,255,.45)} 24%{opacity:.9} 43%{opacity:.22} 60%{opacity:.8} 100%{opacity:0} }
   #br-back { z-index:10; top:22px; left:24px; height:36px; border:1px solid rgba(241,225,165,.38); border-radius:2px; background:rgba(15,16,10,.7); font:600 11px 'Consolas','Courier New',monospace; letter-spacing:.08em; color:#f4e5af; }
   .br-topline { position:absolute; z-index:4; top:24px; right:28px; display:flex; align-items:center; gap:18px; color:#e6d69b; font:600 11px 'Consolas','Courier New',monospace; letter-spacing:.14em; text-shadow:0 1px 3px #000; }
   .br-rec { color:#ff715f; animation:br-rec-pulse 1.4s steps(2,end) infinite; }
@@ -255,6 +259,7 @@
     <canvas id="br-cv" aria-label="奶蛙后室 3D 场景"></canvas>
     <div class="br-vignette"></div>
     <div class="br-scanlines"></div>
+    <div class="br-scare" id="br-scare" aria-hidden="true"></div>
     <div class="br-crosshair" aria-hidden="true"><span></span><span></span></div>
     <div class="br-topline"><span class="br-rec">● REC</span><span>NAIWA // LEVEL 0</span><span id="br-clock">00:00</span></div>
     <div class="br-hud">
@@ -296,10 +301,6 @@ function backToLobby(){
 }
 
 $('lobby-btn').addEventListener('click', function(){
-  var entryMusic = $('entry-music');
-  entryMusic.loop = false;
-  entryMusic.currentTime = 0;
-  entryMusic.play().catch(function(){});
   $('lobby').classList.add('hide');
   $('backrooms-screen').classList.remove('hide');
   document.documentElement.classList.add('br-lock');
