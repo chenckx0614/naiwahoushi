@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import naidanGlb from './.build/naidan.glb';
 import naishuGlb from './.build/naishu.glb';
-import { findShotTarget } from './shot-target.js';
+import { findShotTarget, MILK_RANGE } from './shot-target.js';
 import { hearNoise, stunEnemy, stepEnemy } from './enemy-ai.js';
 import { createGameAudio } from './game-audio.js';
 
@@ -514,7 +514,7 @@ function shoot() {
   camera.updateMatrixWorld(true);
   const origin=camera.position;
   const direction=camera.getWorldDirection(new THREE.Vector3());
-  const raycaster=new THREE.Raycaster(origin,direction,0,7*CELL);
+  const raycaster=new THREE.Raycaster(origin,direction,0,MILK_RANGE);
   const wallDistance=wallMesh ? (raycaster.intersectObject(wallMesh,false)[0]?.distance ?? Infinity) : Infinity;
   const {target,blocked}=findShotTarget(origin,direction,wallDistance,enemies,CELL);
   if(target) {

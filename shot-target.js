@@ -1,5 +1,7 @@
+export const MILK_RANGE=4.5;
+
 export function findShotTarget(origin,direction,wallDistance,enemies,cellSize=1) {
-  const range=7*cellSize;
+  const range=MILK_RANGE;
   let target=null,nearest=range,blocked=false;
   for(const enemy of enemies) {
     const dx=enemy.x*cellSize-origin.x,dy=.75-origin.y,dz=enemy.z*cellSize-origin.z;
