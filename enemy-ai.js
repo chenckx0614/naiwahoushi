@@ -24,7 +24,7 @@ export function stepEnemy(enemy,dt,env) {
   enemy.think-=dt;
   const d=distance(enemy.x,enemy.z,px,pz);
   const facing=d>0 ? ((px-enemy.x)*enemy.faceX+(pz-enemy.z)*enemy.faceZ)/d : 1;
-  const sees=d<5.8/scale && (d<1.25/scale || facing>.12 || enemy.state==='chase') &&
+  const sees=!env.hidden && d<5.8/scale && (d<1.25/scale || facing>.12 || enemy.state==='chase') &&
     lineClear(enemy.x,enemy.z,px,pz);
   let spotted=false,attacked=false;
 
@@ -61,8 +61,19 @@ export function stepEnemy(enemy,dt,env) {
     if(enemy.stun<=0) {enemy.stun=0;enemy.state='search';enemy.searchTime=3;enemy.path=[];}
     return {spotted,attacked};
   }
+  if(env.hidden && env.hideSpot && enemy.state==='chase' && d<2.4/scale) {
+    enemy.lastKnown={x:env.hideSpot.x,z:env.hideSpot.z};
+    enemy.memory=Math.max(enemy.memory,2);
+  }
 
   if(sees) {
+    const cell=`${Math.round(px)},${Math.round(pz)}`;
+    if(enemy.previousPlayerCell && enemy.previousPlayerCell!==cell) {
+      enemy.learnedRoutes??=new Map();
+      const key=enemy.previousPlayerCell+'>'+cell;
+      enemy.learnedRoutes.set(key,Math.min(4,(enemy.learnedRoutes.get(key)||0)+1));
+    }
+    enemy.previousPlayerCell=cell;
     enemy.lastKnown={x:Math.round(px),z:Math.round(pz)};
     if(enemy.state!=='chase' && enemy.state!=='alert') {
       enemy.state='alert';enemy.alertTime=.4;enemy.path=[];spotted=true;
@@ -81,10 +92,27 @@ export function stepEnemy(enemy,dt,env) {
     if(enemy.memory<=0) {enemy.state='search';enemy.searchTime=4;enemy.path=[];}
     else if(sees && d<2.4/scale) {enemy.path=[];moveToward(px,pz,2.75/scale);}
     else {
+      if(!sees && enemy.lastKnown && enemy.learnedRoutes?.size) {
+        const prefix=`${enemy.lastKnown.x},${enemy.lastKnown.z}>`;
+        const learned=[...enemy.learnedRoutes].filter(([key,count])=>key.startsWith(prefix)&&count>=2)
+          .sort((a,b)=>b[1]-a[1])[0];
+        if(learned) {
+          const [x,z]=learned[0].slice(prefix.length).split(',').map(Number);
+          if(env.clearAt(x,z)) enemy.lastKnown={x,z};
+        }
+      }
       if(enemy.think<=0) {enemy.think=.35;setPath(enemy.lastKnown);}
       followPath(2.5/scale);
     }
+    if(env.hidden && env.hideSpot && d<1.05/scale && enemy.memory>0) {
+      enemy.state='alert';enemy.alertTime=.45;enemy.path=[];
+      return {spotted,attacked,found:true};
+    }
   } else if(enemy.state==='investigate') {
+    if(env.hidden && env.hideSpot && d<1.05/scale) {
+      enemy.state='alert';enemy.alertTime=.45;enemy.path=[];
+      return {spotted,attacked,found:true};
+    }
     enemy.memory-=dt;
     if(enemy.think<=0) {enemy.think=.7;setPath(enemy.lastKnown);}
     const arrived=followPath(1.2/scale);

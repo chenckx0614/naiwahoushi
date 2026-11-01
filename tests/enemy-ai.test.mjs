@@ -49,3 +49,20 @@ test('a stunned enemy cannot attack, and a chasing enemy attacks once before sea
   assert.equal(e.state,'search');
   assert.equal(stepEnemy(e,.1,world).attacked,false);
 });
+
+test('a locker breaks sight, but a chasing enemy can inspect a nearby locker',()=>{
+  const e=enemy();e.z=3.5;e.state='chase';e.memory=4;
+  const hiding={...world,hidden:true,hideSpot:{x:0,z:4}};
+  const result=stepEnemy(e,.1,hiding);
+  assert.equal(result.found,true);
+  assert.equal(result.attacked,false);
+});
+
+test('enemy records repeated player movement between cells',()=>{
+  const e=enemy();
+  stepEnemy(e,.1,{...world,pz:3});
+  stepEnemy(e,.1,{...world,pz:4});
+  stepEnemy(e,.1,{...world,pz:3});
+  stepEnemy(e,.1,{...world,pz:4});
+  assert.equal(e.learnedRoutes.get('0,3>0,4'),2);
+});
