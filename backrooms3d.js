@@ -26,7 +26,7 @@ const ui = {
 };
 const copy = {
   zh: {
-    back:'返回大厅', hp:'生命', milk:'牛奶', rescued:'已救援', find:'寻找迷路的奶鼠',
+    back:'返回大厅', hp:'生命', milk:'牛奶', stamina:'耐力', rescued:'已救援', find:'寻找迷路的奶鼠',
     exit:'奶鼠已救齐，寻找绿色出口', intro:'救出 3 只奶鼠，再找到出口。奶蛋会巡逻，能听见奔跑和泼奶；甩开它后，它还会搜寻一阵。',
     introButton:'进入 LEVEL 0', retry:'重新进入', resume:'继续探索',
     win:'出口找到了', winMsg:'你带着所有奶鼠逃出了 Level 0。',
@@ -42,7 +42,7 @@ const copy = {
     remembered:'奶蛋记住了这个柜子的位置',found:'柜门被拉开了！',powerOut:'灯光熄灭了',mouseCry:'远处传来奶鼠的叫声',
   },
   en: {
-    back:'BACK TO LOBBY', hp:'HEALTH', milk:'MILK', rescued:'RESCUED', find:'FIND THE LOST MICE',
+    back:'BACK TO LOBBY', hp:'HEALTH', milk:'MILK', stamina:'STAMINA', rescued:'RESCUED', find:'FIND THE LOST MICE',
     exit:'ALL RESCUED · FIND THE GREEN EXIT', intro:'Rescue three mice, then find the exit. The egg patrols, hears sprinting and milk, and searches after losing sight of you.',
     introButton:'ENTER LEVEL 0', retry:'TRY AGAIN', resume:'RESUME',
     win:'EXIT FOUND', winMsg:'You brought every mouse out of Level 0.',
@@ -72,7 +72,7 @@ const lockerView=document.getElementById('br-locker-view');
 let lockerSoundClock=0;
 const gameAudio=createGameAudio();
 let open = false, running = false, phase = 'intro', hadPointerLock = false;
-let hp = 100, milk = 12, rescued = 0, elapsed = 0, shotFlash = 0, damageFlash = 0;
+let hp = 100, milk = 12, stamina=100, sprintExhausted=false, rescued = 0, elapsed = 0, shotFlash = 0, damageFlash = 0;
 let yaw = 0, pitch = 0, px = 1, pz = 1, joyX = 0, joyY = 0, sprintTouch = false;
 let lastTime = 0, stepClock = 0, toastTimer = 0, doorNoticeCooldown=0, spottedNoticeCooldown=0, threatSoundClock=0, rng = Math.random;
 let audioPrefs = {music:true,sfx:true};
@@ -415,6 +415,8 @@ function resize() {
 }
 function hud() {
   ui.hp.textContent=Math.max(0,Math.ceil(hp));ui.milk.textContent=milk;
+  document.getElementById('br-stamina').textContent=Math.ceil(stamina);
+  document.getElementById('br-stamina-wrap').classList.toggle('low',stamina<25);
   ui.rescued.textContent=`${rescued} / ${GOAL}`;
   objective();
   ui.clock.textContent=String(Math.floor(elapsed/60)).padStart(2,'0')+':'+String(Math.floor(elapsed%60)).padStart(2,'0');
@@ -433,6 +435,7 @@ function sync() {
   document.getElementById('br-back-label').textContent=text('back');
   document.getElementById('br-hp-label').textContent=text('hp');
   document.getElementById('br-milk-label').textContent=text('milk');
+  document.getElementById('br-stamina-label').textContent=text('stamina');
   document.getElementById('br-rescued-label').textContent=text('rescued');
   ui.title.textContent=phase==='intro'?(document.documentElement.lang.startsWith('en')?'NAIWA BACKROOMS':'蛙后室'):text(phase==='win'?'win':phase==='lose'?'lose':'pause');
   ui.message.textContent=text(phase==='intro'?'intro':phase==='win'?'winMsg':phase==='lose'?'loseMsg':'pauseMsg');
@@ -454,7 +457,7 @@ function start() {
   if(!world || !models) {ui.message.textContent=text('loading');return;}
   if(phase!=='paused' && phase!=='intro') {
     rng=seeded((Date.now()^Math.floor(Math.random()*0xffffffff))>>>0);
-    buildWorld();hp=100;milk=12;rescued=0;elapsed=0;stepClock=0;
+    buildWorld();hp=100;milk=12;stamina=100;sprintExhausted=false;rescued=0;elapsed=0;stepClock=0;
     doorNoticeCooldown=0;spottedNoticeCooldown=0;threatSoundClock=0;
     hidden=false;hideSpot=null;powerClock=16+rng()*13;blackout=0;mouseCryClock=10;
   }
@@ -543,7 +546,12 @@ function move(dt) {
   if(keys.ArrowRight) yaw-=dt*1.9;
   const len=Math.hypot(forward,strafe);
   if(len>1){forward/=len;strafe/=len;}
-  const moving=!hidden && len>.03,speed=(keys.Shift||sprintTouch?3.55:2.25)/CELL;
+  const wantsSprint=keys.Shift||sprintTouch;
+  if(sprintExhausted && stamina>=35) sprintExhausted=false;
+  const sprinting=!hidden && len>.03 && wantsSprint && !sprintExhausted && stamina>0;
+  stamina=Math.max(0,Math.min(100,stamina+(sprinting?-23:hidden?19:len>.03?8:16)*dt));
+  if(stamina===0) {sprintExhausted=true;sprintTouch=false;}
+  const moving=!hidden && len>.03,speed=(sprinting?3.55:2.25)/CELL;
   if(moving) {
     const dx=(-Math.sin(yaw)*forward+Math.cos(yaw)*strafe)*speed*dt;
     const dz=(-Math.cos(yaw)*forward-Math.sin(yaw)*strafe)*speed*dt;
@@ -551,12 +559,14 @@ function move(dt) {
     if(clearAt(px,pz+dz)) pz+=dz;
     stepClock+=dt*speed*CELL;
     if(stepClock>1.15){stepClock=0;gameAudio.play('step',.3,.92+rng()*.16);
-      emitNoise(px,pz,(keys.Shift||sprintTouch)?5.5:1.8);}
+      emitNoise(px,pz,sprinting?5.5:1.8);}
   }
   camera.position.set(px*CELL,EYE+(moving?Math.sin(elapsed*speed*CELL*9)*.024:0),pz*CELL);
   hideButton.classList.toggle('available',running && !hidden && lockers.some(s=>Math.hypot(s.x-px,s.z-pz)*CELL<1.15));
   hideButton.classList.toggle('hiding',hidden);
   hideButton.textContent=text(hidden?'unhide':'hide');
+  document.getElementById('br-stamina').textContent=Math.ceil(stamina);
+  document.getElementById('br-stamina-wrap').classList.toggle('low',stamina<25);
   camera.rotation.set(pitch,yaw,0,'YXZ');
   if(hidden) return;
   for(let i=friends.length-1;i>=0;i--) {
@@ -675,7 +685,7 @@ function enter(preferences) {
     mask.classList.remove('hide');return;
   }
   clearWorld();friends=[];enemies=[];exit=null;
-  hp=100;milk=12;rescued=0;elapsed=0;
+  hp=100;milk=12;stamina=100;sprintExhausted=false;rescued=0;elapsed=0;
   sync();mask.classList.remove('hide');
   ui.message.textContent=text('loading');ui.start.disabled=true;
   ui.load.classList.remove('hide');

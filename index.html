@@ -99,6 +99,8 @@
   .br-hud-item { min-width:93px; padding:8px 11px 7px; border-top:1px solid rgba(241,225,165,.72); background:linear-gradient(180deg,rgba(16,19,12,.74),rgba(16,19,12,.9)); box-shadow:0 2px 14px rgba(0,0,0,.22); }
   .br-hud-item small { display:block; color:#b4aa86; font:600 10px 'Consolas','Courier New',monospace; letter-spacing:.12em; }
   .br-hud-item strong { display:block; margin-top:3px; color:#f5edc8; font:700 25px 'Consolas','Courier New',monospace; line-height:1; }
+  .br-hud-item.stamina strong { color:#d7d69e; }
+  .br-hud-item.stamina.low strong { color:#f18d72; }
   .br-objective { margin-left:auto; padding:10px 13px; max-width:32vw; border-left:2px solid #e8d796; background:rgba(16,19,12,.74); color:#f0e3af; font:600 11px 'Consolas','Courier New',monospace; line-height:1.4; letter-spacing:.06em; }
   #br-toast { position:absolute; z-index:5; left:50%; top:17%; transform:translate(-50%,-8px); max-width:80vw; padding:9px 16px; border:1px solid rgba(239,222,156,.6); background:rgba(19,21,12,.87); color:#f7e9ae; font:700 12px 'Consolas','Courier New',monospace; text-align:center; opacity:0; transition:opacity .2s,transform .2s; pointer-events:none; }
   #br-toast.show { opacity:1; transform:translate(-50%,0); }
@@ -275,6 +277,7 @@
     <div class="br-hud">
       <div class="br-hud-item"><small id="br-hp-label">生命</small><strong id="br-hp">100</strong></div>
       <div class="br-hud-item"><small id="br-milk-label">牛奶</small><strong id="br-milk">12</strong></div>
+      <div class="br-hud-item stamina" id="br-stamina-wrap"><small id="br-stamina-label">耐力</small><strong id="br-stamina">100</strong></div>
       <div class="br-hud-item"><small id="br-rescued-label">已救援</small><strong id="br-rescued">0 / 3</strong></div>
       <div class="br-objective" id="br-objective">寻找迷路的奶鼠</div>
     </div>
