@@ -10,8 +10,8 @@ import { createGameAudio } from './game-audio.js';
 const screen = document.getElementById('backrooms-screen');
 const canvas = document.getElementById('br-cv');
 const mask = document.getElementById('br-mask');
-const N = 21;
-const CELL = 1.65;
+const N = 25;
+const CELL = 2.15;
 const EYE = 1.18;
 const PLAYER_RADIUS = 0.22;
 const GOAL = 3;
@@ -32,15 +32,15 @@ const copy = {
     win:'出口找到了', winMsg:'你带着所有奶鼠逃出了 Level 0。',
     lose:'信号中断', loseMsg:'奶蛋抓住了你。再试一次。',
     pause:'信号暂停', pauseMsg:'深呼吸，走廊还在等你。',
-    tip:'WASD 移动 · 鼠标观察 · F 手电 · E 躲藏 · 点击泼奶 · Shift 奔跑',
-    mobileTip:'左摇杆移动 · 右侧滑动观察 · 点按钮控制手电与躲藏',
+    tip:'WASD 移动 · 鼠标观察 · F 手电 · 点击泼奶 · Shift 奔跑',
+    mobileTip:'左摇杆移动 · 右侧滑动观察 · 点按钮控制手电与攻击',
     save:'奶鼠救援成功：{n} / 3', ready:'出口已经开启', hit:'奶蛋暂时被击退', spotted:'奶蛋发现你了！',
     locked:'出口锁定 · 还需救出奶鼠',
     loading:'正在准备奶蛋和奶鼠模型…', modelError:'角色模型加载失败，请重新打开游戏。',
     blocked:'前方有墙，牛奶没有命中', empty:'牛奶快用完了', webglError:'无法启动 3D 画面，请检查浏览器是否支持 WebGL。',
-    hide:'E · 躲进柜子',unhide:'离开柜子',flashOn:'F · 手电开',flashOff:'F · 手电关',hiding:'屏住呼吸，听它的脚步声',
+    flashOn:'F · 手电开',flashOff:'F · 手电关',
     finalRun:'出口灯亮了！奶蛋正赶过来，快跑！',
-    remembered:'奶蛋记住了这个柜子的位置',found:'柜门被拉开了！',powerOut:'灯光熄灭了',mouseCry:'远处传来奶鼠的叫声',
+    powerOut:'灯光熄灭了',mouseCry:'远处传来奶鼠的叫声',
   },
   en: {
     back:'BACK TO LOBBY', hp:'HEALTH', milk:'MILK', stamina:'STAMINA', rescued:'RESCUED', find:'FIND THE LOST MICE',
@@ -49,15 +49,15 @@ const copy = {
     win:'EXIT FOUND', winMsg:'You brought every mouse out of Level 0.',
     lose:'SIGNAL LOST', loseMsg:'The egg caught you. Try again.',
     pause:'SIGNAL PAUSED', pauseMsg:'Take a breath. The corridors will wait.',
-    tip:'WASD move · mouse look · F light · E hide · click throw milk · Shift sprint',
-    mobileTip:'Left stick move · swipe to look · tap buttons for light and hiding',
+    tip:'WASD move · mouse look · F light · click throw milk · Shift sprint',
+    mobileTip:'Left stick move · swipe to look · tap buttons for light and attack',
     save:'MOUSE RESCUED: {n} / 3', ready:'THE EXIT IS OPEN', hit:'EGG REPELLED FOR NOW', spotted:'THE EGG SAW YOU!',
     locked:'EXIT LOCKED · RESCUE THE MICE',
     loading:'PREPARING THE EGG AND MOUSE MODELS…', modelError:'Character models failed to load. Please reopen the game.',
     blocked:'THE WALL BLOCKED YOUR SHOT', empty:'LOW ON MILK', webglError:'The 3D scene could not start. Check WebGL support in your browser.',
-    hide:'E · HIDE IN LOCKER',unhide:'LEAVE LOCKER',flashOn:'F · LIGHT ON',flashOff:'F · LIGHT OFF',hiding:'Hold your breath. Listen for footsteps.',
+    flashOn:'F · LIGHT ON',flashOff:'F · LIGHT OFF',
     finalRun:'THE EXIT IS OPEN. THEY ARE COMING. RUN!',
-    remembered:'The egg remembers this locker.',found:'The locker door was pulled open!',powerOut:'THE LIGHTS WENT OUT',mouseCry:'A mouse cries in the distance.',
+    powerOut:'THE LIGHTS WENT OUT',mouseCry:'A mouse cries in the distance.',
   },
 };
 const text = key => copy[document.documentElement.lang.startsWith('en') ? 'en' : 'zh'][key];
@@ -67,12 +67,9 @@ let exitIndicators=[], exitEdges=[], exitOpening=false, friends = [], enemies = 
 let scareModel=null, scareTime=0, scareCooldown=0;
 const scareOverlay=document.getElementById('br-scare');
 let fluorescents=[];
-let lockers=[], hidden=false, hideSpot=null, powerClock=22, blackout=0, mouseCryClock=0;
-const hideButton=document.getElementById('br-hide');
+let powerClock=22, blackout=0, mouseCryClock=0;
 const flashlightButton=document.getElementById('br-flashlight');
 let flashlightOn=true;
-const lockerView=document.getElementById('br-locker-view');
-let lockerSoundClock=0;
 const gameAudio=createGameAudio();
 let open = false, running = false, phase = 'intro', hadPointerLock = false, lockAttempted=false;
 let hp = 100, milk = 12, stamina=100, sprintExhausted=false, rescued = 0, elapsed = 0, shotFlash = 0, damageFlash = 0;
@@ -97,10 +94,7 @@ function floorAt(x, z) { return inside(x,z) && grid[z][x] === 0; }
 function cellAt(x, z) { return floorAt(Math.floor(x + .5), Math.floor(z + .5)); }
 function clearAt(x, z) {
   const r = PLAYER_RADIUS/CELL;
-  const worldX=x*CELL,worldZ=z*CELL;
-  const blockedByLocker=lockers.some(s=>Math.abs(worldX-s.worldX)<s.halfX+PLAYER_RADIUS &&
-    Math.abs(worldZ-s.worldZ)<s.halfZ+PLAYER_RADIUS);
-  return !blockedByLocker && cellAt(x-r,z-r) && cellAt(x+r,z-r) && cellAt(x-r,z+r) && cellAt(x+r,z+r) &&
+  return cellAt(x-r,z-r) && cellAt(x+r,z-r) && cellAt(x-r,z+r) && cellAt(x+r,z+r) &&
     (!exit || (rescued===GOAL && exitDoor?.position.y>1.8) || Math.hypot(x-exit.x,z-exit.z)>.49);
 }
 function distance(a,b) { return Math.hypot(a.x-b.x,a.z-b.z); }
@@ -109,8 +103,7 @@ function lineClear(x1,z1,x2,z2) {
   for(let i=1;i<n;i++) {
     const t=i/n;
     const x=x1+(x2-x1)*t,z=z1+(z2-z1)*t;
-    if(!cellAt(x,z) || lockers.some(s=>Math.abs(x*CELL-s.worldX)<s.halfX &&
-      Math.abs(z*CELL-s.worldZ)<s.halfZ)) return false;
+    if(!cellAt(x,z)) return false;
   }
   return true;
 }
@@ -162,8 +155,8 @@ function generateMap() {
   for(let z=2;z<N-2;z++) for(let x=2;x<N-2;x++) if(grid[z][x] && rng()<.18) {
     if((floorAt(x-1,z)&&floorAt(x+1,z)) || (floorAt(x,z-1)&&floorAt(x,z+1))) grid[z][x]=0;
   }
-  for(let i=0;i<4;i++) {
-    const cx=3+2*Math.floor(rng()*7), cz=3+2*Math.floor(rng()*7);
+  for(let i=0;i<6;i++) {
+    const cx=3+2*Math.floor(rng()*((N-5)/2)), cz=3+2*Math.floor(rng()*((N-5)/2));
     for(let z=cz-1;z<=cz+1;z++) for(let x=cx-1;x<=cx+1;x++) grid[z][x]=0;
   }
   const d=distances(1,1), candidates=[];
@@ -357,36 +350,12 @@ function buildWorld() {
   wallCells.forEach(([x,z],i)=>{dummy.position.set(x*CELL,1.5,z*CELL);dummy.updateMatrix();walls.setMatrixAt(i,dummy.matrix);});
   walls.instanceMatrix.needsUpdate=true; world.add(walls);
   wallMesh=walls;
-  lockers=[];
-  const spots=[];
-  for(let z=2;z<N-2;z++) for(let x=2;x<N-2;x++) if(floorAt(x,z) &&
-    neighbors(x,z).length<=2 && distance({x,z},{x:1,z:1})>3 && distance({x,z},exit)>2 &&
-    data.selected.every(f=>distance({x,z},f)>1.5) && data.enemySpots.every(e=>distance({x,z},e)>1.5))
-    spots.push({x,z});
-  for(let i=spots.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[spots[i],spots[j]]=[spots[j],spots[i]];}
-  for(const spot of spots.slice(0,Math.min(8,spots.length))) {
-    const [dx,dz]=pick([[1,0],[-1,0],[0,1],[0,-1]].filter(([a,b])=>!floorAt(spot.x+a,spot.z+b)));
-    const worldX=(spot.x+dx*.32)*CELL,worldZ=(spot.z+dz*.32)*CELL;
-    const locker=new THREE.Group();
-    const metal=new THREE.MeshStandardMaterial({color:0x515548,metalness:.55,roughness:.65});
-    const body=new THREE.Mesh(new THREE.BoxGeometry(.62,1.8,.38),metal);
-    body.position.y=.9;locker.add(body);
-    const seam=new THREE.Mesh(new THREE.BoxGeometry(.015,1.58,.012),new THREE.MeshBasicMaterial({color:0x171a14}));
-    seam.position.set(0,.9,.2);locker.add(seam);
-    for(const x of [-.15,.15]) {const slit=new THREE.Mesh(new THREE.BoxGeometry(.16,.012,.014),seam.material);
-      slit.position.set(x,1.35,.205);locker.add(slit);}
-    locker.position.set(worldX,0,worldZ);
-    locker.rotation.y=Math.atan2(-dx,-dz);
-    world.add(locker);
-    lockers.push({...spot,worldX,worldZ,accessX:worldX-dx*.4,accessZ:worldZ-dz*.4,
-      halfX:dx?.19:.31,halfZ:dz?.19:.31,mesh:locker,uses:0});
-  }
   let fixtureCount=0, pointCount=0;
-  for(let z=1;z<N-1;z++) for(let x=1;x<N-1;x++) if(!grid[z][x] && (x+z*3)%13===0 && fixtureCount<18) {
+  for(let z=1;z<N-1;z++) for(let x=1;x<N-1;x++) if(!grid[z][x] && (x+z*3)%13===0 && fixtureCount<26) {
     const panel=new THREE.Mesh(new THREE.BoxGeometry(.72*CELL,.035,.2*CELL),
       new THREE.MeshBasicMaterial({color:0x8d8765}));
     panel.position.set(x*CELL,2.958,z*CELL); world.add(panel); fixtureCount++;
-    if(pointCount<5 && (x+z)%3===0) {
+    if(pointCount<7 && (x+z)%3===0) {
       const light=new THREE.PointLight(0xffe3a3,5.5,7.5,2);
       light.position.set(x*CELL,2.7,z*CELL);world.add(light);
       fluorescents.push({light,panel,phase:rng()*10,faulty:pointCount%2===0});pointCount++;
@@ -479,7 +448,7 @@ function start() {
     rng=seeded((Date.now()^Math.floor(Math.random()*0xffffffff))>>>0);
     buildWorld();hp=100;milk=12;stamina=100;sprintExhausted=false;rescued=0;elapsed=0;stepClock=0;
     doorNoticeCooldown=0;spottedNoticeCooldown=0;threatSoundClock=0;
-    hidden=false;hideSpot=null;powerClock=16+rng()*13;blackout=0;mouseCryClock=10;
+    powerClock=16+rng()*13;blackout=0;mouseCryClock=10;
     screen.classList.remove('finale');flashlightOn=true;
     flashlightButton.classList.remove('off');flashlightButton.setAttribute('aria-pressed','true');
     flashlightButton.textContent=text('flashOn');
@@ -516,17 +485,6 @@ function clearScare() {
   if(scareModel) {camera?.remove(scareModel);scareModel=null;}
   scareOverlay.classList.remove('active');
 }
-function toggleHide() {
-  if(!running) return;
-  if(hidden) {hidden=false;hideSpot=null;lockerView.classList.remove('active');gameAudio.cue('power');notice(text('unhide'));return;}
-  const spot=lockers.find(s=>Math.hypot(s.accessX-px*CELL,s.accessZ-pz*CELL)<.85);
-  if(!spot) return;
-  hidden=true;hideSpot=spot;spot.uses++;
-  lockerView.classList.add('active');gameAudio.cue('power');
-  emitNoise(px,pz,spot.uses>1?7:2);
-  if(spot.uses>1) notice(text('remembered'));
-  else notice(text('hiding'));
-}
 function toggleFlashlight() {
   if(!running) return;
   flashlightOn=!flashlightOn;
@@ -549,7 +507,7 @@ function triggerScare(enemy) {
   damageFlash=.3;
 }
 function shoot() {
-  if(!running || hidden) return;
+  if(!running) return;
   if(milk<=0) {notice(text('empty'));return;}
   milk--;shotFlash=.12;gameAudio.play('splash',.5,.95+rng()*.12);hud();
   emitNoise(px,pz,8);
@@ -558,8 +516,7 @@ function shoot() {
   const direction=camera.getWorldDirection(new THREE.Vector3());
   const raycaster=new THREE.Raycaster(origin,direction,0,7*CELL);
   const wallDistance=wallMesh ? (raycaster.intersectObject(wallMesh,false)[0]?.distance ?? Infinity) : Infinity;
-  const lockerDistance=lockers.length ? (raycaster.intersectObjects(lockers.map(s=>s.mesh),true)[0]?.distance ?? Infinity) : Infinity;
-  const {target,blocked}=findShotTarget(origin,direction,Math.min(wallDistance,lockerDistance),enemies,CELL);
+  const {target,blocked}=findShotTarget(origin,direction,wallDistance,enemies,CELL);
   if(target) {
     stunEnemy(target);target.mesh.scale.setScalar(.83);
     const nx=target.x+direction.x*.42/CELL,nz=target.z+direction.z*.42/CELL;
@@ -578,10 +535,10 @@ function move(dt) {
   if(len>1){forward/=len;strafe/=len;}
   const wantsSprint=keys.Shift||sprintTouch;
   if(sprintExhausted && stamina>=35) sprintExhausted=false;
-  const sprinting=!hidden && len>.03 && wantsSprint && !sprintExhausted && stamina>0;
-  stamina=Math.max(0,Math.min(100,stamina+(sprinting?-23:hidden?19:len>.03?8:16)*dt));
+  const sprinting=len>.03 && wantsSprint && !sprintExhausted && stamina>0;
+  stamina=Math.max(0,Math.min(100,stamina+(sprinting?-23:len>.03?8:16)*dt));
   if(stamina===0) {sprintExhausted=true;sprintTouch=false;}
-  const moving=!hidden && len>.03,speed=(sprinting?3.55:2.25)/CELL;
+  const moving=len>.03,speed=(sprinting?3.55:2.25)/CELL;
   if(moving) {
     const dx=(-Math.sin(yaw)*forward+Math.cos(yaw)*strafe)*speed*dt;
     const dz=(-Math.cos(yaw)*forward-Math.sin(yaw)*strafe)*speed*dt;
@@ -592,14 +549,9 @@ function move(dt) {
       emitNoise(px,pz,sprinting?5.5:1.8);}
   }
   camera.position.set(px*CELL,EYE+(moving?Math.sin(elapsed*speed*CELL*9)*.024:0),pz*CELL);
-  hideButton.classList.toggle('available',running && !hidden &&
-    lockers.some(s=>Math.hypot(s.accessX-px*CELL,s.accessZ-pz*CELL)<.85));
-  hideButton.classList.toggle('hiding',hidden);
-  hideButton.textContent=text(hidden?'unhide':'hide');
   document.getElementById('br-stamina').textContent=Math.ceil(stamina);
   document.getElementById('br-stamina-wrap').classList.toggle('low',stamina<25);
   camera.rotation.set(pitch,yaw,0,'YXZ');
-  if(hidden) return;
   for(let i=friends.length-1;i>=0;i--) {
     const f=friends[i];
     f.mesh.position.y=.08+Math.sin(elapsed*2+f.phase)*.08;
@@ -619,12 +571,11 @@ function move(dt) {
 }
 function updateEnemies(dt) {
   spottedNoticeCooldown=Math.max(0,spottedNoticeCooldown-dt);
-  const env={px,pz,lineClear,route,neighbors,clearAt,random:rng,scale:CELL,hidden,hideSpot,
+  const env={px,pz,lineClear,route,neighbors,clearAt,random:rng,scale:CELL,
     blackout:blackout>0,flashlight:flashlightOn,exitReady:rescued===GOAL,exit,
     guardPost:exit?(() => {const p=neighbors(exit.x,exit.z)[0];return p?{x:p[0],z:p[1]}:exit;})():null};
   for(const e of enemies) {
     const result=stepEnemy(e,dt,env);
-    if(result.found) {hidden=false;hideSpot=null;lockerView.classList.remove('active');notice(text('found'));triggerScare(e);}
     if(result.spotted && spottedNoticeCooldown===0) {
       notice(text('spotted'));gameAudio.play('growl',.45,.9);spottedNoticeCooldown=2;threatSoundClock=5;
     }
@@ -681,11 +632,6 @@ function updateAtmosphere(dt) {
   const edge=red>0?`rgba(72,8,8,${.48+red})`:'rgba(0,0,0,.68)';
   document.querySelector('.br-vignette').style.background=
     `radial-gradient(ellipse at center,${blackout>0?'rgba(0,0,0,.35)':'transparent'} 35%,rgba(0,0,0,.5) 72%,${edge} 100%)`;
-  lockerSoundClock=Math.max(0,lockerSoundClock-dt);
-  if(hidden && nearest<4 && lockerSoundClock===0) {
-    gameAudio.play('step',Math.max(.12,(4-nearest)*.1),.68);
-    lockerSoundClock=.7+rng()*.45;
-  }
   document.querySelector('.br-scanlines').style.opacity=String(.48+threat*.2);
   threatSoundClock=Math.max(0,threatSoundClock-dt);
   if(threat>.65 && threatSoundClock===0) {
@@ -755,8 +701,6 @@ function leave() {
   gameAudio.stop();
   clearScare();
   screen.classList.remove('finale');
-  hidden=false;hideSpot=null;hideButton.classList.remove('available','hiding');
-  lockerView.classList.remove('active');
   clearWorld();
   Object.keys(keys).forEach(k=>delete keys[k]);joyX=joyY=0;sprintTouch=false;
 }
@@ -775,7 +719,6 @@ window.addEventListener('keydown',e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(k)) e.preventDefault();
   if(k==='Escape'&&running) pause();
   if(k==='f'&&running&&!e.repeat) toggleFlashlight();
-  if(k==='e'&&running&&!e.repeat) toggleHide();
   if((k===' '||k==='Enter')&&running&&!e.repeat) shoot();
 });
 window.addEventListener('keyup',e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;keys[k]=false;});
@@ -830,7 +773,6 @@ joystick.addEventListener('pointermove',e=>{if(joystickId===e.pointerId)setStick
 function releaseStick(e){if(joystickId!==e.pointerId)return;joystickId=null;joyX=joyY=0;knob.style.left='50%';knob.style.top='50%';}
 joystick.addEventListener('pointerup',releaseStick);joystick.addEventListener('pointercancel',releaseStick);
 document.getElementById('br-fire').addEventListener('pointerdown',e=>{e.preventDefault();shoot();});
-hideButton.addEventListener('pointerdown',e=>{e.preventDefault();toggleHide();});
 flashlightButton.addEventListener('pointerdown',e=>{e.preventDefault();toggleFlashlight();});
 const runButton=document.getElementById('br-run');
 runButton.addEventListener('pointerdown',e=>{e.preventDefault();sprintTouch=true;runButton.setPointerCapture(e.pointerId);});

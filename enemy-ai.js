@@ -27,7 +27,7 @@ export function stepEnemy(enemy,dt,env) {
   const facing=d>0 ? ((px-enemy.x)*enemy.faceX+(pz-enemy.z)*enemy.faceZ)/d : 1;
   const sight=enemy.kind==='watcher'?7.2:enemy.kind==='listener'?4.1:5.8;
   const sightRange=(env.blackout?sight*.48:env.flashlight?sight*1.25:sight*.72)/scale;
-  const sees=!env.hidden && d<sightRange && (d<1.25/scale || facing>.12 || enemy.state==='chase' ||
+  const sees=d<sightRange && (d<1.25/scale || facing>.12 || enemy.state==='chase' ||
     (enemy.kind==='watcher' && env.flashlight)) &&
     lineClear(enemy.x,enemy.z,px,pz);
   let spotted=false,attacked=false;
@@ -68,10 +68,6 @@ export function stepEnemy(enemy,dt,env) {
   if(enemy.kind==='warden' && env.exitReady && env.exit && enemy.state==='patrol') {
     enemy.state='guard';enemy.path=[];enemy.think=0;
   }
-  if(env.hidden && env.hideSpot && enemy.state==='chase' && d<2.4/scale) {
-    enemy.lastKnown={x:env.hideSpot.x,z:env.hideSpot.z};
-    enemy.memory=Math.max(enemy.memory,2);
-  }
 
   if(sees) {
     const cell=`${Math.round(px)},${Math.round(pz)}`;
@@ -111,18 +107,10 @@ export function stepEnemy(enemy,dt,env) {
       if(enemy.think<=0) {enemy.think=.35;setPath(enemy.lastKnown);}
       followPath(2.5/scale);
     }
-    if(env.hidden && env.hideSpot && d<1.05/scale && enemy.memory>0) {
-      enemy.state='alert';enemy.alertTime=.45;enemy.path=[];
-      return {spotted,attacked,found:true};
-    }
   } else if(enemy.state==='guard') {
     if(enemy.think<=0) {enemy.think=1;setPath(env.guardPost||env.exit);}
     followPath(1.15/scale);
   } else if(enemy.state==='investigate') {
-    if(env.hidden && env.hideSpot && d<1.05/scale) {
-      enemy.state='alert';enemy.alertTime=.45;enemy.path=[];
-      return {spotted,attacked,found:true};
-    }
     enemy.memory-=dt;
     if(enemy.think<=0) {enemy.think=.7;setPath(enemy.lastKnown);}
     const arrived=followPath((env.exitReady?1.9:1.2)/scale);
@@ -145,7 +133,7 @@ export function stepEnemy(enemy,dt,env) {
     }
   }
 
-  if(!env.hidden && (enemy.state==='chase' || enemy.state==='alert') &&
+  if((enemy.state==='chase' || enemy.state==='alert') &&
       distance(enemy.x,enemy.z,px,pz)<.68/scale && enemy.attack<=0) {
     enemy.attack=1.4;enemy.state='search';enemy.searchTime=2;enemy.path=[];attacked=true;
   }

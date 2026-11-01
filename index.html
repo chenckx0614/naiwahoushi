@@ -81,11 +81,6 @@
   .br-scare { position:absolute; inset:0; z-index:6; pointer-events:none; opacity:0;
     background:radial-gradient(circle,transparent 12%,rgba(115,0,0,.35) 55%,#080000 100%); }
   .br-scare.active { animation:br-scare-flash .65s steps(2,end) both; }
-  .br-locker-view { display:none; position:absolute; inset:0; z-index:4; pointer-events:none;
-    background:linear-gradient(90deg,#020302 0%,#080a08 12%,transparent 24%,transparent 76%,#080a08 88%,#020302 100%),
-      linear-gradient(180deg,#020302 0%,#050705 39%,transparent 42%,transparent 45%,#030403 48%,#030403 58%,transparent 61%,transparent 64%,#020302 68%,#020302 100%);
-    box-shadow:inset 0 0 110px 55px #020302; }
-  .br-locker-view.active { display:block; }
   @keyframes br-scare-flash { 0%{opacity:0} 10%{opacity:1;background-color:rgba(255,255,255,.45)} 24%{opacity:.9} 43%{opacity:.22} 60%{opacity:.8} 100%{opacity:0} }
   #br-back { z-index:10; top:22px; left:24px; height:36px; border:1px solid rgba(241,225,165,.38); border-radius:2px; background:rgba(15,16,10,.7); font:600 11px 'Consolas','Courier New',monospace; letter-spacing:.08em; color:#f4e5af; }
   .br-topline { position:absolute; z-index:4; top:24px; right:28px; display:flex; align-items:center; gap:18px; color:#e6d69b; font:600 11px 'Consolas','Courier New',monospace; letter-spacing:.14em; text-shadow:0 1px 3px #000; }
@@ -121,9 +116,6 @@
   #br-j::before { border-color:rgba(230,216,161,.42); background:rgba(19,21,12,.3); }
   #br-jk { background:rgba(230,216,161,.74); }
   #br-fire,#br-run { z-index:9; display:none; position:fixed; border:1px solid rgba(239,226,170,.65); color:#f3e5b4; background:rgba(19,21,12,.7); box-shadow:0 0 16px rgba(0,0,0,.3); touch-action:none; }
-  #br-hide { z-index:9; position:absolute; right:24px; bottom:105px; display:none; padding:10px 14px; border:1px solid #d9cb93; background:#151910df; color:#f3e5b4; font:700 12px 'Microsoft YaHei',sans-serif; cursor:pointer; }
-  #br-hide.available { display:block; }
-  #br-hide.hiding { display:block; background:#433d21; }
   #br-flashlight { z-index:9; position:absolute; right:24px; bottom:62px; padding:8px 12px;
     border:1px solid #d9cb93; background:#151910df; color:#f3e5b4; font:700 12px 'Microsoft YaHei',sans-serif; cursor:pointer; }
   #br-flashlight.off { color:#9a9a84; border-color:#777865; }
@@ -162,8 +154,7 @@
     #br-j { left:max(8px,env(safe-area-inset-left)); bottom:max(5px,env(safe-area-inset-bottom)); }
     #br-fire { right:max(14px,env(safe-area-inset-right)); bottom:max(16px,env(safe-area-inset-bottom)); }
     #br-run { right:calc(max(14px,env(safe-area-inset-right)) + 80px); bottom:max(26px,env(safe-area-inset-bottom)); }
-    #br-hide { right:14px; bottom:104px; }
-    #br-flashlight { right:14px; bottom:150px; }
+    #br-flashlight { right:14px; bottom:108px; }
     .br-mask-kicker { margin-bottom:4px; }
     #br-mask-title { margin-bottom:5px; font-size:clamp(30px,8vh,48px); }
     .br-mask #br-msg { font-size:12px; line-height:1.5; }
@@ -277,7 +268,6 @@
     <div class="br-vignette"></div>
     <div class="br-scanlines"></div>
     <div class="br-scare" id="br-scare" aria-hidden="true"></div>
-    <div class="br-locker-view" id="br-locker-view" aria-hidden="true"></div>
     <div class="br-crosshair" aria-hidden="true"><span></span><span></span></div>
     <div class="br-topline"><span class="br-rec">● REC</span><span>NAIWA // LEVEL 0</span><span id="br-clock">00:00</span></div>
     <div class="br-hud">
@@ -288,7 +278,6 @@
       <div class="br-objective" id="br-objective">寻找迷路的奶鼠</div>
     </div>
     <div id="br-toast" role="status"></div>
-    <button id="br-hide" type="button">E · 躲进柜子</button>
     <button id="br-flashlight" type="button" aria-pressed="true">F · 手电开</button>
     <div class="br-mask" id="br-mask">
       <div class="br-mask-kicker">NAIWA / ARCHIVE 001</div>
