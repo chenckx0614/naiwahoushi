@@ -119,6 +119,9 @@
   #br-flashlight { z-index:9; position:absolute; right:24px; bottom:62px; padding:8px 12px;
     border:1px solid #d9cb93; background:#151910df; color:#f3e5b4; font:700 12px 'Microsoft YaHei',sans-serif; cursor:pointer; }
   #br-flashlight.off { color:#9a9a84; border-color:#777865; }
+  #br-noclip { display:none; z-index:9; position:absolute; right:24px; bottom:105px; padding:10px 14px;
+    border:1px solid #a4d7ce; background:#0b211cde; color:#c9fff0; font:700 12px 'Microsoft YaHei',sans-serif; cursor:pointer; }
+  #br-noclip.available { display:block; }
   #backrooms-screen.finale .br-topline { color:#9fffd1; text-shadow:0 0 12px #1dff9b; }
   #backrooms-screen.finale .br-rec { color:#73ffbb; }
   #br-fire { right:23px; bottom:23px; width:72px; height:72px; font-size:30px; }
@@ -155,6 +158,7 @@
     #br-fire { right:max(14px,env(safe-area-inset-right)); bottom:max(16px,env(safe-area-inset-bottom)); }
     #br-run { right:calc(max(14px,env(safe-area-inset-right)) + 80px); bottom:max(26px,env(safe-area-inset-bottom)); }
     #br-flashlight { right:14px; bottom:108px; }
+    #br-noclip { right:14px; bottom:150px; }
     .br-mask-kicker { margin-bottom:4px; }
     #br-mask-title { margin-bottom:5px; font-size:clamp(30px,8vh,48px); }
     .br-mask #br-msg { font-size:12px; line-height:1.5; }
@@ -287,6 +291,7 @@ var _hmt = _hmt || [];
       <div class="br-objective" id="br-objective">寻找迷路的奶鼠</div>
     </div>
     <div id="br-toast" role="status"></div>
+    <button id="br-noclip" type="button">E · 穿过墙</button>
     <button id="br-flashlight" type="button" aria-pressed="true">F · 手电开</button>
     <div class="br-mask" id="br-mask">
       <div class="br-mask-kicker">NAIWA / ARCHIVE 001</div>

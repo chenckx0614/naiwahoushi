@@ -30,7 +30,7 @@ const copy = {
     back:'返回大厅', hp:'生命', milk:'牛奶', stamina:'耐力', rescued:'已救援', find:'寻找迷路的奶鼠', routeDistance:'沿路约',
     exit:'奶鼠已救齐，寻找绿色出口', intro:'救出 3 只奶鼠，再找到出口。奶蛋会巡逻，能听见奔跑和泼奶；甩开它后，它还会搜寻一阵。',
     introButton:'进入 LEVEL 0', retry:'重新进入', resume:'继续探索',
-    win:'出口找到了', winMsg:'你带着所有奶鼠逃出了 Level 0。',
+    win:'出口找到了', winMsg:'你带着所有奶鼠逃出了 Level 0。',secretWin:'墙后还有另一条路',
     lose:'信号中断', loseMsg:'奶蛋抓住了你。再试一次。',
     pause:'信号暂停', pauseMsg:'深呼吸，走廊还在等你。',
     tip:'WASD 移动 · 鼠标观察 · F 手电 · 点击泼奶 · Shift 奔跑',
@@ -40,14 +40,15 @@ const copy = {
     loading:'正在准备奶蛋和奶鼠模型…', modelError:'角色模型加载失败，请重新打开游戏。',
     blocked:'前方有墙，牛奶没有命中', empty:'牛奶快用完了', webglError:'无法启动 3D 画面，请检查浏览器是否支持 WebGL。',
     flashOn:'F · 手电开',flashOff:'F · 手电关',
-    finalRun:'出口灯亮了！奶蛋正赶过来，快跑！',
-    powerOut:'灯光熄灭了',mouseCry:'远处传来奶鼠的叫声',
+    finalRun:'出口灯亮了！奶蛋正赶过来，墙面也开始闪烁。',
+    powerOut:'灯光熄灭了',mouseCry:'{direction}传来奶鼠的叫声',falseCry:'{direction}传来重复的叫声，随后是抓墙声',
+    wallChanged:'这面墙刚才是这样的吗？',noclip:'E · 穿过墙',secretNear:'附近有墙在闪烁',
   },
   en: {
     back:'BACK TO LOBBY', hp:'HEALTH', milk:'MILK', stamina:'STAMINA', rescued:'RESCUED', find:'FIND THE LOST MICE', routeDistance:'WALK',
     exit:'ALL RESCUED · FIND THE GREEN EXIT', intro:'Rescue three mice, then find the exit. The egg patrols, hears sprinting and milk, and searches after losing sight of you.',
     introButton:'ENTER LEVEL 0', retry:'TRY AGAIN', resume:'RESUME',
-    win:'EXIT FOUND', winMsg:'You brought every mouse out of Level 0.',
+    win:'EXIT FOUND', winMsg:'You brought every mouse out of Level 0.',secretWin:'THERE IS ANOTHER WAY THROUGH',
     lose:'SIGNAL LOST', loseMsg:'The egg caught you. Try again.',
     pause:'SIGNAL PAUSED', pauseMsg:'Take a breath. The corridors will wait.',
     tip:'WASD move · mouse look · F light · click throw milk · Shift sprint',
@@ -57,8 +58,9 @@ const copy = {
     loading:'PREPARING THE EGG AND MOUSE MODELS…', modelError:'Character models failed to load. Please reopen the game.',
     blocked:'THE WALL BLOCKED YOUR SHOT', empty:'LOW ON MILK', webglError:'The 3D scene could not start. Check WebGL support in your browser.',
     flashOn:'F · LIGHT ON',flashOff:'F · LIGHT OFF',
-    finalRun:'THE EXIT IS OPEN. THEY ARE COMING. RUN!',
-    powerOut:'THE LIGHTS WENT OUT',mouseCry:'A mouse cries in the distance.',
+    finalRun:'THE EXIT IS OPEN. THEY ARE COMING. A WALL IS FLICKERING.',
+    powerOut:'THE LIGHTS WENT OUT',mouseCry:'A mouse cries {direction}.',falseCry:'The same cry repeats {direction}, followed by scratching.',
+    wallChanged:'WAS THIS WALL ALWAYS HERE?',noclip:'E · NO-CLIP',secretNear:'A WALL IS FLICKERING NEARBY',
   },
 };
 const text = key => copy[document.documentElement.lang.startsWith('en') ? 'en' : 'zh'][key];
@@ -68,6 +70,8 @@ let exitIndicators=[], exitEdges=[], exitOpening=false, friends = [], enemies = 
 let scareModel=null, scareTime=0, scareCooldown=0;
 const scareOverlay=document.getElementById('br-scare');
 let fluorescents=[];
+let anomalies=[],secretWall=null;
+const noclipButton=document.getElementById('br-noclip');
 let powerClock=22, blackout=0, mouseCryClock=0;
 const flashlightButton=document.getElementById('br-flashlight');
 let flashlightOn=true;
@@ -172,7 +176,18 @@ function generateMap() {
     if(enemySpots.every(e=>distance(e,c)>5)) enemySpots.push(c);
     if(enemySpots.length===3) break;
   }
-  return { selected, enemySpots };
+  const wallSide=c=>[[1,0],[-1,0],[0,1],[0,-1]].find(([dx,dz])=>!floorAt(c.x+dx,c.z+dz));
+  const secret=candidates.find(c=>c.d>=8 && distance(c,exit)>5 &&
+    selected.every(f=>distance(c,f)>2) && wallSide(c));
+  const anomalySpots=candidates.filter(c=>c.d>4 && distance(c,exit)>2 &&
+    (!secret || distance(c,secret)>3) && selected.every(f=>distance(c,f)>2) && wallSide(c));
+  const spaced=[];
+  for(const c of anomalySpots) {
+    if(spaced.every(s=>distance(s,c)>4)) spaced.push(c);
+    if(spaced.length===3) break;
+  }
+  return { selected, enemySpots, secret:secret?{...secret,side:wallSide(secret)}:null,
+    anomalySpots:spaced.map(c=>({...c,side:wallSide(c)})) };
 }
 function texture(kind,seed) {
   const c=document.createElement('canvas'); c.width=c.height=128;
@@ -248,6 +263,7 @@ function clearWorld() {
   geometries.forEach(g=>g.dispose());
   materials.forEach(m=>{if(m.map)m.map.dispose();m.dispose();});
   world=null;wallMesh=null;exitDoor=null;exitOpening=false;exitIndicators=[];exitEdges=[];fluorescents=[];
+  anomalies=[];secretWall=null;
 }
 function makeExit() {
   const portal=new THREE.Group();
@@ -357,6 +373,26 @@ function buildWorld() {
     }
   }
   makeExit();
+  function wallPanel(spot,material,width=.95) {
+    const [dx,dz]=spot.side;
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(width,2.15,.028),material);
+    mesh.position.set((spot.x+dx*.5)*CELL-dx*.025,1.18,(spot.z+dz*.5)*CELL-dz*.025);
+    mesh.rotation.y=Math.atan2(-dx,-dz);
+    world.add(mesh);
+    return mesh;
+  }
+  anomalies=data.anomalySpots.map(spot=>{
+    const material=new THREE.MeshStandardMaterial({color:0x42402f,emissive:0x252b20,emissiveIntensity:.25});
+    const mesh=wallPanel(spot,material,.9);mesh.visible=false;
+    return {...spot,mesh,seen:false,changed:false,announced:false};
+  });
+  if(data.secret) {
+    const material=new THREE.MeshBasicMaterial({color:0x79ffcf,transparent:true,opacity:0,depthWrite:false});
+    const mesh=wallPanel(data.secret,material,1.25);mesh.visible=false;
+    const light=new THREE.PointLight(0x51ffbf,0,3.5,2);
+    light.position.copy(mesh.position);light.position.y=1.25;world.add(light);
+    secretWall={...data.secret,mesh,light,material,xWorld:mesh.position.x,zWorld:mesh.position.z};
+  }
   friends=data.selected.map((p,i)=>{ const mesh=character('mouse');mesh.position.set(p.x*CELL,0,p.z*CELL);world.add(mesh);return {x:p.x,z:p.z,mesh,phase:i*2.1}; });
   enemies=data.enemySpots.map((p,i)=>{ const mesh=character('egg');mesh.scale.setScalar(1.25);mesh.position.set(p.x*CELL,0,p.z*CELL);world.add(mesh);
     const eyeMaterial=new THREE.MeshBasicMaterial({color:0xff4438});
@@ -430,7 +466,8 @@ function sync() {
   ui.tip.textContent=text(matchMedia('(pointer:coarse)').matches?'mobileTip':'tip');
   hud();
 }
-function showMask(newPhase) { phase=newPhase;mask.classList.remove('hide');screen.classList.remove('playing');ui.load.classList.add('hide');sync(); }
+function showMask(newPhase) { phase=newPhase;mask.classList.remove('hide');screen.classList.remove('playing');
+  noclipButton.classList.remove('available');ui.load.classList.add('hide');sync(); }
 function emitNoise(x,z,radius) { enemies.forEach(enemy=>hearNoise(enemy,x,z,radius/CELL)); }
 function lockPointer() {
   if(!canvas.requestPointerLock) return;
@@ -465,10 +502,11 @@ function pause() {
   if(document.pointerLockElement===canvas) document.exitPointerLock();
   gameAudio.pause();
 }
-function end(win) {
+function end(win,secret=false) {
   running=false;if(raf){cancelAnimationFrame(raf);raf=0;}
   clearScare();
   showMask(win?'win':'lose');
+  if(win && secret) ui.message.textContent=text('secretWin');
   if(document.pointerLockElement===canvas) document.exitPointerLock();
   if(win) {
     const duration=gameAudio.playEnding();
@@ -490,6 +528,10 @@ function toggleFlashlight() {
   flashlightButton.setAttribute('aria-pressed',String(flashlightOn));
   flashlightButton.textContent=text(flashlightOn?'flashOn':'flashOff');
   gameAudio.cue('power');
+}
+function enterSecret() {
+  if(running && rescued===GOAL && secretWall &&
+    Math.hypot(secretWall.xWorld-px*CELL,secretWall.zWorld-pz*CELL)<1.35) end(true,true);
 }
 function triggerScare(enemy) {
   if(scareCooldown>0 || !running) return;
@@ -611,10 +653,31 @@ function updateAtmosphere(dt) {
   baseLight.intensity=blackout>0?.12:flashlightOn?.85:.45;
   mouseCryClock-=dt;
   if(mouseCryClock<=0 && friends.length) {
-    const friend=pick(friends);
-    emitNoise(friend.x,friend.z,7);
-    if(Math.hypot(friend.x-px,friend.z-pz)*CELL<9) {notice(text('mouseCry'));gameAudio.cue('squeak');}
-    mouseCryClock=12+rng()*12;
+    const fake=rng()<.38;
+    const possible=[];
+    if(fake) for(let z=1;z<N-1;z++) for(let x=1;x<N-1;x++)
+      if(floorAt(x,z) && Math.hypot(x-px,z-pz)>2 && Math.hypot(x-px,z-pz)<5 &&
+        friends.every(f=>Math.hypot(f.x-x,f.z-z)>3)) possible.push({x,z});
+    const source=possible.length?pick(possible):pick(friends);
+    const isFake=fake && possible.length>0;
+    emitNoise(source.x,source.z,7);
+    if(Math.hypot(source.x-px,source.z-pz)*CELL<11) {
+      const dx=source.x-px,dz=source.z-pz;
+      const right=dx*Math.cos(yaw)-dz*Math.sin(yaw);
+      const forward=-dx*Math.sin(yaw)-dz*Math.cos(yaw);
+      const english=document.documentElement.lang.startsWith('en');
+      const direction=Math.abs(right)>Math.abs(forward)?
+        (right>0?(english?'to your right':'右侧'):(english?'to your left':'左侧')):
+        (forward>0?(english?'ahead':'前方'):(english?'behind you':'身后'));
+      notice(text(isFake?'falseCry':'mouseCry').replace('{direction}',direction));
+      gameAudio.cue('squeak');
+      if(isFake) {const currentEntry=entryId;setTimeout(()=>{
+        if(open && running && entryId===currentEntry) gameAudio.cue('squeak');
+      },190);setTimeout(()=>{
+        if(open && running && entryId===currentEntry) gameAudio.cue('scratch');
+      },470);}
+    }
+    mouseCryClock=10+rng()*10;
   }
   let nearest=Infinity;
   for(const enemy of enemies) if(enemy.state!=='stunned')
@@ -639,11 +702,40 @@ function updateAtmosphere(dt) {
     gameAudio.play('growl',.2,.65);threatSoundClock=4+rng()*2;
   }
 }
+function updateAnomalies() {
+  for(const a of anomalies) {
+    const d=Math.hypot(a.x-px,a.z-pz);
+    if(d<1.5) a.seen=true;
+    if(a.seen && !a.changed && d>3.5) {
+      const facing=(-(a.x-px)*Math.sin(yaw)-(a.z-pz)*Math.cos(yaw))/(d||1);
+      if(facing<.15 || !lineClear(px,pz,a.x,a.z)) {
+        a.changed=true;a.mesh.visible=true;
+      }
+    }
+    const looking=(-(a.x-px)*Math.sin(yaw)-(a.z-pz)*Math.cos(yaw))/(d||1)>.25;
+    if(a.changed && !a.announced && d<1.5 && looking) {
+      a.announced=true;notice(text('wallChanged'));gameAudio.cue('power');
+    }
+  }
+  if(!secretWall) return;
+  const active=rescued===GOAL;
+  secretWall.mesh.visible=active;
+  secretWall.material.opacity=active?.12+.52*Math.pow(Math.max(0,Math.sin(elapsed*5)),4):0;
+  secretWall.light.intensity=active?secretWall.material.opacity*2.2:0;
+  const secretDistance=Math.hypot(secretWall.xWorld-px*CELL,secretWall.zWorld-pz*CELL);
+  if(active && secretDistance<5 && !secretWall.hinted) {
+    secretWall.hinted=true;notice(text('secretNear'));gameAudio.cue('power');
+  }
+  const near=active && secretDistance<1.35;
+  noclipButton.classList.toggle('available',near);
+  noclipButton.textContent=text('noclip');
+}
 function frame(t) {
   raf=0;if(!running) return;
   const dt=Math.min(.05,(t-lastTime)/1000||0);lastTime=t;
   if(document.hidden){raf=requestAnimationFrame(frame);return;}
   elapsed+=dt;move(dt);
+  if(running) updateAnomalies();
   scareCooldown=Math.max(0,scareCooldown-dt);
   if(scareTime>0) {scareTime-=dt;if(scareTime<=0) clearScare();}
   if(!running) return;
@@ -702,6 +794,7 @@ function leave() {
   gameAudio.stop();
   clearScare();
   screen.classList.remove('finale');
+  noclipButton.classList.remove('available');
   clearWorld();
   Object.keys(keys).forEach(k=>delete keys[k]);joyX=joyY=0;sprintTouch=false;
 }
@@ -720,6 +813,7 @@ window.addEventListener('keydown',e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(k)) e.preventDefault();
   if(k==='Escape'&&running) pause();
   if(k==='f'&&running&&!e.repeat) toggleFlashlight();
+  if(k==='e'&&running&&!e.repeat) enterSecret();
   if((k===' '||k==='Enter')&&running&&!e.repeat) shoot();
 });
 window.addEventListener('keyup',e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;keys[k]=false;});
@@ -775,6 +869,7 @@ function releaseStick(e){if(joystickId!==e.pointerId)return;joystickId=null;joyX
 joystick.addEventListener('pointerup',releaseStick);joystick.addEventListener('pointercancel',releaseStick);
 document.getElementById('br-fire').addEventListener('pointerdown',e=>{e.preventDefault();shoot();});
 flashlightButton.addEventListener('pointerdown',e=>{e.preventDefault();toggleFlashlight();});
+noclipButton.addEventListener('pointerdown',e=>{e.preventDefault();enterSecret();});
 const runButton=document.getElementById('br-run');
 runButton.addEventListener('pointerdown',e=>{e.preventDefault();sprintTouch=true;runButton.setPointerCapture(e.pointerId);});
 runButton.addEventListener('pointerup',()=>{sprintTouch=false;});

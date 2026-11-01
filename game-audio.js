@@ -85,13 +85,13 @@ export function createGameAudio() {
     if(!sfx || !context || context.state!=='running') return;
     const now=context.currentTime;
     const oscillator=context.createOscillator(),gain=context.createGain();
-    oscillator.type=name==='squeak'?'sine':'sawtooth';
-    const start=name==='squeak'?760:90;
+    oscillator.type=name==='squeak'?'sine':name==='scratch'?'triangle':'sawtooth';
+    const start=name==='squeak'?760:name==='scratch'?240:90;
     oscillator.frequency.setValueAtTime(start,now);
-    oscillator.frequency.exponentialRampToValueAtTime(name==='squeak'?1350:45,now+.11);
-    oscillator.frequency.exponentialRampToValueAtTime(name==='squeak'?610:80,now+.22);
+    oscillator.frequency.exponentialRampToValueAtTime(name==='squeak'?1350:name==='scratch'?95:45,now+.11);
+    oscillator.frequency.exponentialRampToValueAtTime(name==='squeak'?610:name==='scratch'?180:80,now+.22);
     gain.gain.setValueAtTime(.0001,now);
-    gain.gain.exponentialRampToValueAtTime(name==='squeak'?.055:.025,now+.025);
+    gain.gain.exponentialRampToValueAtTime(name==='squeak'?.055:name==='scratch'?.038:.025,now+.025);
     gain.gain.exponentialRampToValueAtTime(.0001,now+.25);
     oscillator.connect(gain);gain.connect(master);
     oscillator.start(now);oscillator.stop(now+.27);
