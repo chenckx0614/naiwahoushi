@@ -618,6 +618,7 @@ function updateAtmosphere(dt) {
   for(const enemy of enemies) if(enemy.state!=='stunned')
     nearest=Math.min(nearest,Math.hypot(enemy.x-px,enemy.z-pz)*CELL);
   const threat=Math.max(0,Math.min(1,(5.5-nearest)/4.5));
+  gameAudio.setThreat(threat,blackout>0);
   const pulse=(Math.sin(elapsed*(3+threat*2))+1)*.5;
   for(const fixture of fluorescents) {
     const flicker=fixture.faulty && (Math.sin(elapsed*16+fixture.phase)>.92 ||
@@ -635,7 +636,7 @@ function updateAtmosphere(dt) {
   document.querySelector('.br-scanlines').style.opacity=String(.48+threat*.2);
   threatSoundClock=Math.max(0,threatSoundClock-dt);
   if(threat>.65 && threatSoundClock===0) {
-    gameAudio.play('growl',.12,.65);threatSoundClock=6+rng()*3;
+    gameAudio.play('growl',.2,.65);threatSoundClock=4+rng()*2;
   }
 }
 function frame(t) {
