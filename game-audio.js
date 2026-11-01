@@ -7,9 +7,10 @@ import splash2Url from './audio/splash-2.ogg';
 import growl1Url from './audio/growl-1.mp3';
 import growl2Url from './audio/growl-2.mp3';
 import rescueUrl from './audio/rescue.wav';
+import endingUrl from './bgm/end.mp3';
 
 const urls={ambient:[ambientUrl],step:[step1Url,step2Url,step3Url],
-  splash:[splash1Url,splash2Url],growl:[growl1Url,growl2Url],rescue:[rescueUrl]};
+  splash:[splash1Url,splash2Url],growl:[growl1Url,growl2Url],rescue:[rescueUrl],ending:[endingUrl]};
 
 export function createGameAudio() {
   let context,loading,ambientSource,ambientGain;
@@ -61,6 +62,15 @@ export function createGameAudio() {
     gain.gain.value=volume;
     source.connect(gain);gain.connect(context.destination);source.start();
   }
+  function playEnding() {
+    if(!music || !context || context.state!=='running' || !buffers.ending?.[0]) return 0;
+    if(ambientSource) {ambientSource.stop();ambientSource.disconnect();ambientSource=null;}
+    ambientGain?.disconnect();ambientGain=null;
+    const source=context.createBufferSource(),gain=context.createGain();
+    source.buffer=buffers.ending[0];gain.gain.value=.8;
+    source.connect(gain);gain.connect(context.destination);source.start();
+    return source.buffer.duration;
+  }
   function cue(name) {
     if(!sfx || !context || context.state!=='running') return;
     const now=context.currentTime;
@@ -94,5 +104,5 @@ export function createGameAudio() {
     if(ambientGain) ambientGain.gain.value=music?.14:0;
     if(music) startAmbient();
   }
-  return {prepare,start,pause,stop,play,cue,setPreferences};
+  return {prepare,start,pause,stop,play,playEnding,cue,setPreferences};
 }

@@ -66,7 +66,6 @@ let renderer, scene, camera, world, wallMesh, grid, exit, exitLight, exitMateria
 let exitIndicators=[], exitEdges=[], exitOpening=false, friends = [], enemies = [], raf = 0;
 let scareModel=null, scareTime=0, scareCooldown=0;
 const scareOverlay=document.getElementById('br-scare');
-const endingMusic=document.getElementById('entry-music');
 let fluorescents=[];
 let lockers=[], hidden=false, hideSpot=null, powerClock=22, blackout=0, mouseCryClock=0;
 const hideButton=document.getElementById('br-hide');
@@ -109,7 +108,9 @@ function lineClear(x1,z1,x2,z2) {
   const n = Math.ceil(Math.hypot(x2-x1,z2-z1) * 9);
   for(let i=1;i<n;i++) {
     const t=i/n;
-    if(!cellAt(x1+(x2-x1)*t,z1+(z2-z1)*t)) return false;
+    const x=x1+(x2-x1)*t,z=z1+(z2-z1)*t;
+    if(!cellAt(x,z) || lockers.some(s=>Math.abs(x*CELL-s.worldX)<s.halfX &&
+      Math.abs(z*CELL-s.worldZ)<s.halfZ)) return false;
   }
   return true;
 }
@@ -484,7 +485,6 @@ function start() {
     flashlightButton.textContent=text('flashOn');
   }
   clearScare();
-  endingMusic.pause();endingMusic.currentTime=0;
   phase='play';running=true;screen.classList.add('playing');mask.classList.add('hide');
   hadPointerLock=false;
   lastTime=performance.now();gameAudio.start();hud();
@@ -504,9 +504,8 @@ function end(win) {
   showMask(win?'win':'lose');
   if(document.pointerLockElement===canvas) document.exitPointerLock();
   if(win) {
-    gameAudio.pause();
-    endingMusic.currentTime=0;
-    endingMusic.play().catch(()=>{});
+    const duration=gameAudio.playEnding();
+    setTimeout(()=>{if(!running && phase==='win') gameAudio.pause();},(duration+.1)*1000);
   } else {
     gameAudio.play('growl',.5,.65);
     setTimeout(()=>{if(!running && phase==='lose') gameAudio.pause();},650);
@@ -559,7 +558,8 @@ function shoot() {
   const direction=camera.getWorldDirection(new THREE.Vector3());
   const raycaster=new THREE.Raycaster(origin,direction,0,7*CELL);
   const wallDistance=wallMesh ? (raycaster.intersectObject(wallMesh,false)[0]?.distance ?? Infinity) : Infinity;
-  const {target,blocked}=findShotTarget(origin,direction,wallDistance,enemies,CELL);
+  const lockerDistance=lockers.length ? (raycaster.intersectObjects(lockers.map(s=>s.mesh),true)[0]?.distance ?? Infinity) : Infinity;
+  const {target,blocked}=findShotTarget(origin,direction,Math.min(wallDistance,lockerDistance),enemies,CELL);
   if(target) {
     stunEnemy(target);target.mesh.scale.setScalar(.83);
     const nx=target.x+direction.x*.42/CELL,nz=target.z+direction.z*.42/CELL;
@@ -753,7 +753,7 @@ function leave() {
   if(raf){cancelAnimationFrame(raf);raf=0;}
   if(document.pointerLockElement===canvas) document.exitPointerLock();
   gameAudio.stop();
-  clearScare();endingMusic.pause();endingMusic.currentTime=0;
+  clearScare();
   screen.classList.remove('finale');
   hidden=false;hideSpot=null;hideButton.classList.remove('available','hiding');
   lockerView.classList.remove('active');
