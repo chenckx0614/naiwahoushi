@@ -32,13 +32,14 @@ const copy = {
     win:'出口找到了', winMsg:'你带着所有奶鼠逃出了 Level 0。',
     lose:'信号中断', loseMsg:'奶蛋抓住了你。再试一次。',
     pause:'信号暂停', pauseMsg:'深呼吸，走廊还在等你。',
-    tip:'WASD 移动 · 鼠标观察 · E 躲进柜子 · 点击泼牛奶 · Shift 奔跑',
-    mobileTip:'左摇杆移动 · 右侧滑动观察 · 靠近柜子点按钮躲藏',
+    tip:'WASD 移动 · 鼠标观察 · F 手电 · E 躲藏 · 点击泼奶 · Shift 奔跑',
+    mobileTip:'左摇杆移动 · 右侧滑动观察 · 点按钮控制手电与躲藏',
     save:'奶鼠救援成功：{n} / 3', ready:'出口已经开启', hit:'奶蛋暂时被击退', spotted:'奶蛋发现你了！',
     locked:'出口锁定 · 还需救出奶鼠',
     loading:'正在准备奶蛋和奶鼠模型…', modelError:'角色模型加载失败，请重新打开游戏。',
     blocked:'前方有墙，牛奶没有命中', empty:'牛奶快用完了', webglError:'无法启动 3D 画面，请检查浏览器是否支持 WebGL。',
-    hide:'E · 躲进柜子',unhide:'离开柜子',hiding:'屏住呼吸，听它的脚步声',
+    hide:'E · 躲进柜子',unhide:'离开柜子',flashOn:'F · 手电开',flashOff:'F · 手电关',hiding:'屏住呼吸，听它的脚步声',
+    finalRun:'出口灯亮了！奶蛋正赶过来，快跑！',
     remembered:'奶蛋记住了这个柜子的位置',found:'柜门被拉开了！',powerOut:'灯光熄灭了',mouseCry:'远处传来奶鼠的叫声',
   },
   en: {
@@ -48,13 +49,14 @@ const copy = {
     win:'EXIT FOUND', winMsg:'You brought every mouse out of Level 0.',
     lose:'SIGNAL LOST', loseMsg:'The egg caught you. Try again.',
     pause:'SIGNAL PAUSED', pauseMsg:'Take a breath. The corridors will wait.',
-    tip:'WASD move · mouse look · E hide in locker · click throw milk · Shift sprint',
-    mobileTip:'Left stick move · swipe to look · tap Hide near a locker',
+    tip:'WASD move · mouse look · F light · E hide · click throw milk · Shift sprint',
+    mobileTip:'Left stick move · swipe to look · tap buttons for light and hiding',
     save:'MOUSE RESCUED: {n} / 3', ready:'THE EXIT IS OPEN', hit:'EGG REPELLED FOR NOW', spotted:'THE EGG SAW YOU!',
     locked:'EXIT LOCKED · RESCUE THE MICE',
     loading:'PREPARING THE EGG AND MOUSE MODELS…', modelError:'Character models failed to load. Please reopen the game.',
     blocked:'THE WALL BLOCKED YOUR SHOT', empty:'LOW ON MILK', webglError:'The 3D scene could not start. Check WebGL support in your browser.',
-    hide:'E · HIDE IN LOCKER',unhide:'LEAVE LOCKER',hiding:'Hold your breath. Listen for footsteps.',
+    hide:'E · HIDE IN LOCKER',unhide:'LEAVE LOCKER',flashOn:'F · LIGHT ON',flashOff:'F · LIGHT OFF',hiding:'Hold your breath. Listen for footsteps.',
+    finalRun:'THE EXIT IS OPEN. THEY ARE COMING. RUN!',
     remembered:'The egg remembers this locker.',found:'The locker door was pulled open!',powerOut:'THE LIGHTS WENT OUT',mouseCry:'A mouse cries in the distance.',
   },
 };
@@ -68,6 +70,8 @@ const endingMusic=document.getElementById('entry-music');
 let fluorescents=[];
 let lockers=[], hidden=false, hideSpot=null, powerClock=22, blackout=0, mouseCryClock=0;
 const hideButton=document.getElementById('br-hide');
+const flashlightButton=document.getElementById('br-flashlight');
+let flashlightOn=true;
 const lockerView=document.getElementById('br-locker-view');
 let lockerSoundClock=0;
 const gameAudio=createGameAudio();
@@ -324,7 +328,12 @@ function updateExit() {
   exitEdges.forEach(material=>material.color.setHex(0x4affbf));
   exitLight.color.setHex(0x38ffc1);exitLight.intensity=5;
   exitOpening=true;
-  notice(text('ready'));
+  screen.classList.add('finale');
+  notice(text('finalRun'));
+  enemies.forEach(e=>{
+    if(e.state==='stunned') return;
+    e.state='investigate';e.lastKnown={x:exit.x,z:exit.z};e.memory=30;e.think=0;e.path=[];
+  });
   gameAudio.play('rescue',.35,1.25);
 }
 function buildWorld() {
@@ -380,7 +389,7 @@ function buildWorld() {
       const eye=new THREE.Mesh(new THREE.SphereGeometry(.045,8,6),eyeMaterial);
       eye.position.set(side*.14,.62,.33);mesh.add(eye);
     }
-    return {x:p.x,z:p.z,mesh,path:[],think:i*.22,attack:0,phase:i*1.8,state:'patrol',
+    return {x:p.x,z:p.z,mesh,kind:['listener','watcher','warden'][i],path:[],think:i*.22,attack:0,phase:i*1.8,state:'patrol',
       faceX:0,faceZ:1,stun:0,wait:i*.5,memory:0,searchTime:0,lastKnown:null}; });
   px=1; pz=1;
   const first=neighbors(1,1)[0]; yaw=first?Math.atan2(-(first[0]-1),-(first[1]-1)):0; pitch=0;
@@ -460,6 +469,9 @@ function start() {
     buildWorld();hp=100;milk=12;stamina=100;sprintExhausted=false;rescued=0;elapsed=0;stepClock=0;
     doorNoticeCooldown=0;spottedNoticeCooldown=0;threatSoundClock=0;
     hidden=false;hideSpot=null;powerClock=16+rng()*13;blackout=0;mouseCryClock=10;
+    screen.classList.remove('finale');flashlightOn=true;
+    flashlightButton.classList.remove('off');flashlightButton.setAttribute('aria-pressed','true');
+    flashlightButton.textContent=text('flashOn');
   }
   clearScare();
   endingMusic.pause();endingMusic.currentTime=0;
@@ -505,6 +517,14 @@ function toggleHide() {
   emitNoise(px,pz,spot.uses>1?7:2);
   if(spot.uses>1) notice(text('remembered'));
   else notice(text('hiding'));
+}
+function toggleFlashlight() {
+  if(!running) return;
+  flashlightOn=!flashlightOn;
+  flashlightButton.classList.toggle('off',!flashlightOn);
+  flashlightButton.setAttribute('aria-pressed',String(flashlightOn));
+  flashlightButton.textContent=text(flashlightOn?'flashOn':'flashOff');
+  gameAudio.cue('power');
 }
 function triggerScare(enemy) {
   if(scareCooldown>0 || !running) return;
@@ -588,7 +608,9 @@ function move(dt) {
 }
 function updateEnemies(dt) {
   spottedNoticeCooldown=Math.max(0,spottedNoticeCooldown-dt);
-  const env={px,pz,lineClear,route,neighbors,clearAt,random:rng,scale:CELL,hidden,hideSpot,blackout:blackout>0};
+  const env={px,pz,lineClear,route,neighbors,clearAt,random:rng,scale:CELL,hidden,hideSpot,
+    blackout:blackout>0,flashlight:flashlightOn,exitReady:rescued===GOAL,exit,
+    guardPost:exit?(() => {const p=neighbors(exit.x,exit.z)[0];return p?{x:p[0],z:p[1]}:exit;})():null};
   for(const e of enemies) {
     const result=stepEnemy(e,dt,env);
     if(result.found) {hidden=false;hideSpot=null;lockerView.classList.remove('active');notice(text('found'));triggerScare(e);}
@@ -599,7 +621,8 @@ function updateEnemies(dt) {
     e.mesh.rotation.y=Math.atan2(e.faceX,e.faceZ);
     const ring=e.mesh.children[1];
     ring.material.color.setHex(e.state==='stunned'?0x8cd8ff:
-      e.state==='chase'?0xff483d:e.state==='alert'?0xffb54b:0xc94634);
+      e.state==='chase'?0xff483d:e.state==='alert'?0xffb54b:
+      e.kind==='listener'?0xe4bd56:e.kind==='watcher'?0x6bc5fa:0xc97af1);
     ring.material.opacity=e.state==='chase'?.5:e.state==='alert'?.35:e.state==='stunned'?.22:.1;
     const scale=e.mesh.scale.x+(1.25-e.mesh.scale.x)*Math.min(1,dt*6);
     e.mesh.scale.setScalar(scale);
@@ -641,7 +664,8 @@ function updateAtmosphere(dt) {
     fixture.panel.material.color.setHex(flicker?0x292b21:0xc6bc91);
   }
   const torchFlicker=threat>.25 && Math.sin(elapsed*23+Math.sin(elapsed*4)*3)>.94;
-  torch.intensity=(shotFlash>0?34:22)*(torchFlicker?.42:1)*(blackout>0?.25:1);
+  torch.intensity=flashlightOn?(shotFlash>0?34:22)*(torchFlicker?.42:1)*(blackout>0?.25:1):0;
+  if(blackout<=0) baseLight.intensity=flashlightOn?.85:.45;
   const red=damageFlash>0?Math.min(.7,.4+damageFlash):threat*(.12+.09*pulse);
   const edge=red>0?`rgba(72,8,8,${.48+red})`:'rgba(0,0,0,.68)';
   document.querySelector('.br-vignette').style.background=
@@ -679,6 +703,8 @@ function enter(preferences) {
   audioPrefs={music:preferences?.music!==false,sfx:preferences?.sfx!==false};
   gameAudio.setPreferences(audioPrefs);
   open=true;phase='intro';screen.classList.remove('playing');
+  flashlightOn=true;flashlightButton.classList.remove('off');
+  flashlightButton.setAttribute('aria-pressed','true');flashlightButton.textContent=text('flashOn');
   ui.start.disabled=false;
   if(!init()) {
     sync();ui.message.textContent=text('webglError');ui.start.disabled=true;
@@ -717,6 +743,7 @@ function leave() {
   if(document.pointerLockElement===canvas) document.exitPointerLock();
   gameAudio.stop();
   clearScare();endingMusic.pause();endingMusic.currentTime=0;
+  screen.classList.remove('finale');
   hidden=false;hideSpot=null;hideButton.classList.remove('available','hiding');
   lockerView.classList.remove('active');
   clearWorld();
@@ -736,6 +763,7 @@ window.addEventListener('keydown',e=>{
   keys[k]=true;
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(k)) e.preventDefault();
   if(k==='Escape'&&running) pause();
+  if(k==='f'&&running&&!e.repeat) toggleFlashlight();
   if(k==='e'&&running&&!e.repeat) toggleHide();
   if((k===' '||k==='Enter')&&running&&!e.repeat) shoot();
 });
@@ -790,6 +818,7 @@ function releaseStick(e){if(joystickId!==e.pointerId)return;joystickId=null;joyX
 joystick.addEventListener('pointerup',releaseStick);joystick.addEventListener('pointercancel',releaseStick);
 document.getElementById('br-fire').addEventListener('pointerdown',e=>{e.preventDefault();shoot();});
 hideButton.addEventListener('pointerdown',e=>{e.preventDefault();toggleHide();});
+flashlightButton.addEventListener('pointerdown',e=>{e.preventDefault();toggleFlashlight();});
 const runButton=document.getElementById('br-run');
 runButton.addEventListener('pointerdown',e=>{e.preventDefault();sprintTouch=true;runButton.setPointerCapture(e.pointerId);});
 runButton.addEventListener('pointerup',()=>{sprintTouch=false;});

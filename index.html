@@ -124,6 +124,11 @@
   #br-hide { z-index:9; position:absolute; right:24px; bottom:105px; display:none; padding:10px 14px; border:1px solid #d9cb93; background:#151910df; color:#f3e5b4; font:700 12px 'Microsoft YaHei',sans-serif; cursor:pointer; }
   #br-hide.available { display:block; }
   #br-hide.hiding { display:block; background:#433d21; }
+  #br-flashlight { z-index:9; position:absolute; right:24px; bottom:62px; padding:8px 12px;
+    border:1px solid #d9cb93; background:#151910df; color:#f3e5b4; font:700 12px 'Microsoft YaHei',sans-serif; cursor:pointer; }
+  #br-flashlight.off { color:#9a9a84; border-color:#777865; }
+  #backrooms-screen.finale .br-topline { color:#9fffd1; text-shadow:0 0 12px #1dff9b; }
+  #backrooms-screen.finale .br-rec { color:#73ffbb; }
   #br-fire { right:23px; bottom:23px; width:72px; height:72px; font-size:30px; }
   #br-run { right:103px; bottom:33px; width:52px; height:52px; border-radius:50%; font-size:30px; cursor:pointer; }
   #backrooms-screen:not(.playing) #br-j,#backrooms-screen:not(.playing) #br-fire,#backrooms-screen:not(.playing) #br-run { display:none; }
@@ -158,6 +163,7 @@
     #br-fire { right:max(14px,env(safe-area-inset-right)); bottom:max(16px,env(safe-area-inset-bottom)); }
     #br-run { right:calc(max(14px,env(safe-area-inset-right)) + 80px); bottom:max(26px,env(safe-area-inset-bottom)); }
     #br-hide { right:14px; bottom:104px; }
+    #br-flashlight { right:14px; bottom:150px; }
     .br-mask-kicker { margin-bottom:4px; }
     #br-mask-title { margin-bottom:5px; font-size:clamp(30px,8vh,48px); }
     .br-mask #br-msg { font-size:12px; line-height:1.5; }
@@ -283,6 +289,7 @@
     </div>
     <div id="br-toast" role="status"></div>
     <button id="br-hide" type="button">E · 躲进柜子</button>
+    <button id="br-flashlight" type="button" aria-pressed="true">F · 手电开</button>
     <div class="br-mask" id="br-mask">
       <div class="br-mask-kicker">NAIWA / ARCHIVE 001</div>
       <h2 id="br-mask-title">蛙后室</h2>

@@ -73,3 +73,22 @@ test('blackout shortens enemy sight, while its nearby detection still works',()=
   const near=enemy();
   assert.equal(stepEnemy(near,.1,{...world,pz:2,blackout:true}).spotted,true);
 });
+
+test('listener hears farther and watcher is more exposed to flashlight',()=>{
+  const listener=enemy();listener.kind='listener';
+  hearNoise(listener,6,0,4);
+  assert.equal(listener.state,'investigate');
+  const watcher=enemy();watcher.kind='watcher';
+  hearNoise(watcher,6,0,4);
+  assert.equal(watcher.state,'patrol');
+  assert.equal(stepEnemy(watcher,.1,{...world,px:0,pz:6,flashlight:true}).spotted,true);
+});
+
+test('warden moves to its exit post during the final escape',()=>{
+  const warden=enemy();warden.kind='warden';
+  let goal;
+  stepEnemy(warden,.1,{...world,px:15,pz:15,exitReady:true,exit:{x:6,z:6},
+    guardPost:{x:6,z:5},route:(sx,sz,tx,tz)=>{goal=[tx,tz];return [];}});
+  assert.equal(warden.state,'guard');
+  assert.deepEqual(goal,[6,5]);
+});
