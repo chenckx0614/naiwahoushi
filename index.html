@@ -8,6 +8,7 @@
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
+  #app { position:fixed; inset:0; overflow:hidden; }
   #backrooms-screen {
     position:fixed; top:0; right:0; bottom:0; left:0; z-index:40;
     background:#0a0804; overflow:hidden; padding:0;
@@ -124,23 +125,13 @@
     .br-objective { max-width:110px; padding:6px 8px; font-size:9px; }
     #br-toast { top:14%; }
   }
-  /* 手机游戏只在横屏展示；横屏时把状态栏让开触控区。 */
-  #landscape-gate { display:none; }
-  @media (pointer:coarse) and (orientation:portrait) {
-    #landscape-gate {
-      position:fixed; inset:0; z-index:70; display:flex; flex-direction:column;
-      align-items:center; justify-content:center; gap:16px; padding:28px;
-      background:#171509; color:#f4eac4; text-align:center;
-    }
-    #landscape-gate .turn-icon { font-size:58px; line-height:1; color:#e8d26a; }
-    #landscape-gate h2 { margin:0; font:800 25px 'Microsoft YaHei','PingFang SC',sans-serif; }
-    #landscape-gate p { max-width:300px; margin:0; color:#b6aa80; font:13px/1.7 'Microsoft YaHei','PingFang SC',sans-serif; }
-    #landscape-gate button {
-      min-height:44px; padding:0 20px; border:1px solid #e9d796; border-radius:2px;
-      background:#e0ce8c; color:#242316; font:700 13px 'Microsoft YaHei','PingFang SC',sans-serif;
-    }
+  /* 竖持手机时直接显示横向画布，无需浏览器方向锁定。 */
+  @media (pointer:coarse) and (orientation:portrait) and (max-width:700px) {
+    #app { inset:auto; left:100vw; top:0; width:100dvh; height:100vw;
+      transform-origin:top left; transform:rotate(90deg); }
   }
-  @media (pointer:coarse) and (orientation:landscape) and (max-height:500px) {
+  @media (pointer:coarse) and (orientation:landscape) and (max-height:500px),
+         (pointer:coarse) and (orientation:portrait) and (max-width:500px) {
     #br-back { top:12px; left:12px; }
     .br-topline { top:19px; right:14px; gap:8px; font-size:9px; }
     .br-topline span:nth-child(2) { display:none; }
@@ -207,6 +198,7 @@
 </style>
 </head>
 <body>
+<div id="app">
 
 <!-- 启动加载层 -->
 <div id="boot">
@@ -214,13 +206,6 @@
   <div id="boot-track"><div id="boot-fill"></div></div>
   <div id="boot-pct">0%</div>
   <div id="boot-err"></div>
-</div>
-
-<div id="landscape-gate" role="dialog" aria-labelledby="landscape-title">
-  <div class="turn-icon" aria-hidden="true">↻</div>
-  <h2 id="landscape-title">请横屏游玩</h2>
-  <p id="landscape-help">将手机横过来，获得完整的游戏视野。如果画面没有旋转，请关闭手机的方向锁定。</p>
-  <button id="landscape-try" type="button">尝试自动切换横屏</button>
 </div>
 
 <!-- 入口大厅 -->
@@ -260,23 +245,12 @@
   <button id="br-run" title="奔跑">↟</button>
   <button id="br-fire" title="泼牛奶">🥛</button>
 </div>
+</div>
 
 <script>
 /* 独立版外壳：只负责 3D 包的加载进度、大厅/游戏切换。
    游戏本体全部在 backrooms3d.bundle.js 内（window.Backrooms3D）。 */
 var $ = function(id){ return document.getElementById(id); };
-
-$('landscape-try').addEventListener('click', async function(){
-  try {
-    if(!document.fullscreenElement && document.documentElement.requestFullscreen) {
-      await document.documentElement.requestFullscreen();
-    }
-    if(screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
-    else throw new Error('orientation lock unavailable');
-  } catch (_) {
-    $('landscape-help').textContent='此浏览器无法自动切换。请关闭手机方向锁定，再将手机横过来。';
-  }
-});
 
 function backToLobby(){
   if(window.Backrooms3D) window.Backrooms3D.stop();

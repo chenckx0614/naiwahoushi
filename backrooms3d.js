@@ -354,7 +354,7 @@ function init() {
 }
 function resize() {
   if(!renderer) return;
-  const w=Math.max(1,window.innerWidth),h=Math.max(1,window.innerHeight);
+  const w=Math.max(1,canvas.clientWidth),h=Math.max(1,canvas.clientHeight);
   const touch=matchMedia('(pointer:coarse)').matches;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,touch?1.15:1.5));
   renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
@@ -567,17 +567,23 @@ window.addEventListener('keydown',e=>{
   if((k===' '||k==='Enter')&&running&&!e.repeat) shoot();
 });
 window.addEventListener('keyup',e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;keys[k]=false;});
+function touchPoint(e) {
+  if(matchMedia('(pointer:coarse) and (orientation:portrait) and (max-width:700px)').matches)
+    return {x:e.clientY,y:window.innerWidth-e.clientX};
+  return {x:e.clientX,y:e.clientY};
+}
 canvas.addEventListener('pointerdown',e=>{
   if(!running) return;
+  const point=touchPoint(e);
   if(e.pointerType==='mouse') {
     if(document.pointerLockElement!==canvas) {
       lockPointer();
-      canvas._look={id:e.pointerId,x:e.clientX,y:e.clientY};
+      canvas._look={id:e.pointerId,x:point.x,y:point.y};
     }
     shoot();
-  } else if(e.clientX>window.innerWidth*.32) {
+  } else if(point.x>canvas.clientWidth*.32) {
     try { canvas.setPointerCapture(e.pointerId); } catch(err) {}
-    canvas._look={id:e.pointerId,x:e.clientX,y:e.clientY};
+    canvas._look={id:e.pointerId,x:point.x,y:point.y};
   }
 });
 canvas.addEventListener('pointermove',e=>{
@@ -587,8 +593,9 @@ canvas.addEventListener('pointermove',e=>{
     pitch=Math.max(-1.18,Math.min(1.18,pitch-e.movementY*.0027));
   }
   else if(canvas._look?.id===e.pointerId) {
-    const dx=e.clientX-canvas._look.x,dy=e.clientY-canvas._look.y;
-    canvas._look.x=e.clientX;canvas._look.y=e.clientY;
+    const point=touchPoint(e);
+    const dx=point.x-canvas._look.x,dy=point.y-canvas._look.y;
+    canvas._look.x=point.x;canvas._look.y=point.y;
     yaw-=dx*.0055;
     pitch=Math.max(-1.18,Math.min(1.18,pitch-dy*.0055));
   }
@@ -599,7 +606,8 @@ const joystick=document.getElementById('br-j'),knob=document.getElementById('br-
 let joystickId=null;
 function setStick(e) {
   const r=joystick.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
-  let x=(e.clientX-cx)/50,y=(e.clientY-cy)/50;
+  const point=touchPoint(e),center=touchPoint({clientX:cx,clientY:cy});
+  let x=(point.x-center.x)/50,y=(point.y-center.y)/50;
   const len=Math.hypot(x,y);if(len>1){x/=len;y/=len;}
   joyX=x;joyY=y;knob.style.left=(50+x*35)+'%';knob.style.top=(50+y*35)+'%';
 }
