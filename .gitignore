@@ -1,5 +1,7 @@
 # 依赖
 node_modules/
+.build/
+dist/
 
 # 本地项目数据
 .workbuddy/

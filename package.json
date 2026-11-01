@@ -2,12 +2,16 @@
   "name": "naiwa-backrooms",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "奶蛙后室 · Level 0 — 独立版 3D 后室小游戏（three.js 光线风格第一人称）",
   "scripts": {
-    "build": "esbuild backrooms3d.js --bundle --format=iife --target=es2018 --loader:.glb=base64 --minify --outfile=backrooms3d.bundle.js",
-    "dev": "python -m http.server 8950 --bind 127.0.0.1"
+    "optimize:models": "node scripts/prepare-models.mjs && gltf-transform optimize naiwa/backrooms3d/naidan.glb .build/naidan.glb --compress quantize --simplify false --texture-compress webp && gltf-transform optimize naiwa/backrooms3d/naishu.glb .build/naishu.glb --compress quantize --simplify false --texture-compress webp",
+    "build": "npm run optimize:models && node scripts/build.mjs",
+    "dev": "npm run build && python -m http.server 8950 --bind 127.0.0.1 --directory dist",
+    "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {
+    "@gltf-transform/cli": "^4.5.1",
     "esbuild": "0.28.2",
     "three": "0.180.0"
   }

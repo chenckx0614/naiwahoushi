@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import naidanGlb from './naiwa/backrooms3d/naidan.glb';
-import naishuGlb from './naiwa/backrooms3d/naishu.glb';
+import naidanGlb from './.build/naidan.glb';
+import naishuGlb from './.build/naishu.glb';
+import { findShotTarget } from './shot-target.js';
+import { hearNoise, stunEnemy, stepEnemy } from './enemy-ai.js';
+import { createGameAudio } from './game-audio.js';
 
 /* Level 0 is deliberately self-contained: the main match-3 game only opens/closes it. */
 const screen = document.getElementById('backrooms-screen');
@@ -21,39 +24,42 @@ const ui = {
 const copy = {
   zh: {
     back:'返回大厅', hp:'生命', milk:'牛奶', rescued:'已救援', find:'寻找迷路的奶鼠',
-    exit:'奶鼠已救齐，寻找绿色出口', intro:'救出 3 只迷路奶鼠，再找到出口。奶蛋看见你后会追一小段，趁它停下时绕开。',
+    exit:'奶鼠已救齐，寻找绿色出口', intro:'救出 3 只奶鼠，再找到出口。奶蛋会巡逻，能听见奔跑和泼奶；甩开它后，它还会搜寻一阵。',
     introButton:'进入 LEVEL 0', retry:'重新进入', resume:'继续探索',
     win:'出口找到了', winMsg:'你带着所有奶鼠逃出了 Level 0。',
     lose:'信号中断', loseMsg:'奶蛋抓住了你。再试一次。',
     pause:'信号暂停', pauseMsg:'深呼吸，走廊还在等你。',
     tip:'WASD 移动 · 鼠标上下左右观察 · 点击或空格泼牛奶 · Shift 奔跑',
     mobileTip:'左侧摇杆移动 · 右侧上下左右滑动观察 · 牛奶攻击 · ↟ 奔跑',
-    save:'奶鼠救援成功：{n} / 3', ready:'出口已经开启', hit:'奶蛋被制服', spotted:'奶蛋发现你了！',
+    save:'奶鼠救援成功：{n} / 3', ready:'出口已经开启', hit:'奶蛋暂时被击退', spotted:'奶蛋发现你了！',
+    locked:'出口锁定 · 还需救出奶鼠',
     loading:'正在准备奶蛋和奶鼠模型…', modelError:'角色模型加载失败，请重新打开游戏。',
     blocked:'前方有墙，牛奶没有命中', empty:'牛奶快用完了', webglError:'无法启动 3D 画面，请检查浏览器是否支持 WebGL。',
   },
   en: {
     back:'BACK TO LOBBY', hp:'HEALTH', milk:'MILK', rescued:'RESCUED', find:'FIND THE LOST MICE',
-    exit:'ALL RESCUED · FIND THE GREEN EXIT', intro:'Rescue three lost mice, then find the exit. The egg chases briefly after spotting you; slip away when it stops.',
+    exit:'ALL RESCUED · FIND THE GREEN EXIT', intro:'Rescue three mice, then find the exit. The egg patrols, hears sprinting and milk, and searches after losing sight of you.',
     introButton:'ENTER LEVEL 0', retry:'TRY AGAIN', resume:'RESUME',
     win:'EXIT FOUND', winMsg:'You brought every mouse out of Level 0.',
     lose:'SIGNAL LOST', loseMsg:'The egg caught you. Try again.',
     pause:'SIGNAL PAUSED', pauseMsg:'Take a breath. The corridors will wait.',
     tip:'WASD move · look around with the mouse · click/Space throw milk · Shift sprint',
     mobileTip:'Left stick move · swipe right to look around · milk to attack · ↟ sprint',
-    save:'MOUSE RESCUED: {n} / 3', ready:'THE EXIT IS OPEN', hit:'EGG STOPPED', spotted:'THE EGG SAW YOU!',
+    save:'MOUSE RESCUED: {n} / 3', ready:'THE EXIT IS OPEN', hit:'EGG REPELLED FOR NOW', spotted:'THE EGG SAW YOU!',
+    locked:'EXIT LOCKED · RESCUE THE MICE',
     loading:'PREPARING THE EGG AND MOUSE MODELS…', modelError:'Character models failed to load. Please reopen the game.',
     blocked:'THE WALL BLOCKED YOUR SHOT', empty:'LOW ON MILK', webglError:'The 3D scene could not start. Check WebGL support in your browser.',
   },
 };
 const text = key => copy[document.documentElement.lang.startsWith('en') ? 'en' : 'zh'][key];
 
-let renderer, scene, camera, world, grid, exit, exitLight, exitMaterial;
-let friends = [], enemies = [], raf = 0, audio, hum, humGain;
+let renderer, scene, camera, world, wallMesh, grid, exit, exitLight, exitMaterial, exitSignMaterial, exitDoor;
+let exitIndicators=[], exitEdges=[], exitOpening=false, friends = [], enemies = [], raf = 0;
+const gameAudio=createGameAudio();
 let open = false, running = false, phase = 'intro', hadPointerLock = false;
 let hp = 100, milk = 12, rescued = 0, elapsed = 0, shotFlash = 0, damageFlash = 0;
 let yaw = 0, pitch = 0, px = 1, pz = 1, joyX = 0, joyY = 0, sprintTouch = false;
-let lastTime = 0, stepClock = 0, toastTimer = 0, rng = Math.random;
+let lastTime = 0, stepClock = 0, toastTimer = 0, doorNoticeCooldown=0, spottedNoticeCooldown=0, rng = Math.random;
 let audioPrefs = {music:true,sfx:true};
 let lastObjective = '';
 let assetPromise, models, entryId = 0;
@@ -72,7 +78,8 @@ function floorAt(x, z) { return inside(x,z) && grid[z][x] === 0; }
 function cellAt(x, z) { return floorAt(Math.floor(x + .5), Math.floor(z + .5)); }
 function clearAt(x, z) {
   const r = PLAYER_RADIUS;
-  return cellAt(x-r,z-r) && cellAt(x+r,z-r) && cellAt(x-r,z+r) && cellAt(x+r,z+r);
+  return cellAt(x-r,z-r) && cellAt(x+r,z-r) && cellAt(x-r,z+r) && cellAt(x+r,z+r) &&
+    (!exit || (rescued===GOAL && exitDoor?.position.y>1.8) || Math.hypot(x-exit.x,z-exit.z)>.49);
 }
 function distance(a,b) { return Math.hypot(a.x-b.x,a.z-b.z); }
 function lineClear(x1,z1,x2,z2) {
@@ -138,7 +145,7 @@ function generateMap() {
   const d=distances(1,1), candidates=[];
   for(let z=1;z<N-1;z++) for(let x=1;x<N-1;x++) if(grid[z][x]===0 && d[z][x]>=0) candidates.push({x,z,d:d[z][x]});
   candidates.sort((a,b)=>b.d-a.d);
-  exit=candidates[0];
+  exit=candidates.find(c=>c.d>=8 && neighbors(c.x,c.z).length===1) || candidates[0];
   const selected=[];
   for(const c of candidates) {
     if(c.d<8 || distance(c,exit)<3 || selected.some(f=>distance(c,f)<4)) continue;
@@ -180,25 +187,19 @@ function texture(kind,seed) {
   const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping;
   t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=2; return t;
 }
-function decodeGlb(base64) {
-  const binary=atob(base64), bytes=new Uint8Array(binary.length);
-  for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
-  return bytes.buffer;
-}
-function parseModel(base64) {
-  return new Promise((resolve,reject)=>new GLTFLoader().parse(decodeGlb(base64),'',gltf=>{
-    const template=gltf.scene;
-    template.rotation.x=Math.PI/2; // supplied sculpts use Z as the up axis
-    template.updateMatrixWorld(true);
-    const bounds=new THREE.Box3().setFromObject(template);
-    const size=bounds.getSize(new THREE.Vector3());
-    if(!Number.isFinite(size.y)||size.y<=0) {reject(new Error('invalid character bounds'));return;}
-    const scale=.92/size.y;
-    template.scale.multiplyScalar(scale);
-    template.position.set(-(bounds.min.x+bounds.max.x)*.5*scale,-bounds.min.y*scale,-(bounds.min.z+bounds.max.z)*.5*scale);
-    template.traverse(o=>{if(o.isMesh) o.userData.sharedAsset=true;});
-    resolve(template);
-  },reject));
+async function parseModel(url) {
+  const gltf=await new GLTFLoader().loadAsync(url);
+  const template=gltf.scene;
+  template.rotation.x=Math.PI/2; // supplied sculpts use Z as the up axis
+  template.updateMatrixWorld(true);
+  const bounds=new THREE.Box3().setFromObject(template);
+  const size=bounds.getSize(new THREE.Vector3());
+  if(!Number.isFinite(size.y)||size.y<=0) throw new Error('invalid character bounds');
+  const scale=.92/size.y;
+  template.scale.multiplyScalar(scale);
+  template.position.set(-(bounds.min.x+bounds.max.x)*.5*scale,-bounds.min.y*scale,-(bounds.min.z+bounds.max.z)*.5*scale);
+  template.traverse(o=>{if(o.isMesh) o.userData.sharedAsset=true;});
+  return template;
 }
 function loadModels() {
   if(!assetPromise) assetPromise=Promise.all([parseModel(naidanGlb),parseModel(naishuGlb)])
@@ -222,7 +223,79 @@ function clearWorld() {
   world.traverse(o=>{ if(o.userData.sharedAsset) return; if(o.geometry) geometries.add(o.geometry); if(o.material) materials.add(o.material); });
   geometries.forEach(g=>g.dispose());
   materials.forEach(m=>{if(m.map)m.map.dispose();m.dispose();});
-  world=null;
+  world=null;wallMesh=null;exitDoor=null;exitOpening=false;exitIndicators=[];exitEdges=[];
+}
+function makeExit() {
+  const portal=new THREE.Group();
+  const frameMaterial=new THREE.MeshStandardMaterial({color:0x8d8057,metalness:.55,roughness:.5});
+  for(const x of [-.55,.55]) {
+    const post=new THREE.Mesh(new THREE.BoxGeometry(.13,2.5,.19),frameMaterial);
+    post.position.set(x,1.25,0);portal.add(post);
+  }
+  const header=new THREE.Mesh(new THREE.BoxGeometry(1.22,.16,.2),frameMaterial);
+  header.position.set(0,2.5,0);portal.add(header);
+  const threshold=new THREE.Mesh(new THREE.BoxGeometry(1.22,.07,.34),frameMaterial);
+  threshold.position.set(0,.035,.05);portal.add(threshold);
+  const voidPlane=new THREE.Mesh(new THREE.PlaneGeometry(1.02,2.35),
+    new THREE.MeshBasicMaterial({color:0x05120e,side:THREE.DoubleSide}));
+  voidPlane.position.set(0,1.23,-.09);portal.add(voidPlane);
+  exitEdges=[];
+  for(const x of [-.49,.49]) {
+    const material=new THREE.MeshBasicMaterial({color:0x3c4636});
+    const strip=new THREE.Mesh(new THREE.BoxGeometry(.025,2.25,.025),material);
+    strip.position.set(x,1.25,.105);portal.add(strip);exitEdges.push(material);
+  }
+
+  exitDoor=new THREE.Group();portal.add(exitDoor);
+  exitMaterial=new THREE.MeshStandardMaterial({color:0x24271e,emissive:0x17180d,
+    emissiveIntensity:.22,metalness:.25,roughness:.7,side:THREE.DoubleSide});
+  const panel=new THREE.Mesh(new THREE.PlaneGeometry(.98,2.34),exitMaterial);
+  panel.position.set(0,1.25,.035);exitDoor.add(panel);
+  const seam=new THREE.Mesh(new THREE.BoxGeometry(.018,2.2,.025),frameMaterial);
+  seam.position.set(0,1.25,.065);exitDoor.add(seam);
+  const handle=new THREE.Mesh(new THREE.BoxGeometry(.08,.18,.11),frameMaterial);
+  handle.position.set(.38,1.12,.13);exitDoor.add(handle);
+
+  const signCanvas=document.createElement('canvas');signCanvas.width=256;signCanvas.height=80;
+  const g=signCanvas.getContext('2d');
+  g.fillStyle='#11150d';g.fillRect(0,0,256,80);
+  g.fillStyle='#fff5d2';g.font='bold 54px Consolas, monospace';g.textAlign='center';
+  g.fillText('EXIT',128,58);
+  const signTexture=new THREE.CanvasTexture(signCanvas);
+  signTexture.colorSpace=THREE.SRGBColorSpace;
+  exitSignMaterial=new THREE.MeshBasicMaterial({map:signTexture,color:0xb8a66f,side:THREE.DoubleSide});
+  const sign=new THREE.Mesh(new THREE.PlaneGeometry(.9,.3),exitSignMaterial);
+  sign.position.set(0,2.04,.12);exitDoor.add(sign);
+  exitIndicators=[];
+  for(let i=0;i<GOAL;i++) {
+    const material=new THREE.MeshBasicMaterial({color:0x594b2c});
+    const lamp=new THREE.Mesh(new THREE.SphereGeometry(.055,10,8),material);
+    lamp.position.set((i-1)*.22,1.78,.095);exitDoor.add(lamp);
+    exitIndicators.push(material);
+  }
+  const fromStart=distances(1,1);
+  const approach=neighbors(exit.x,exit.z).sort((a,b)=>
+    fromStart[a[1]][a[0]]-fromStart[b[1]][b[0]])[0];
+  if(approach) {
+    portal.rotation.y=Math.atan2(approach[0]-exit.x,approach[1]-exit.z);
+    portal.position.set(exit.x-(approach[0]-exit.x)*.12,0,exit.z-(approach[1]-exit.z)*.12);
+  } else portal.position.set(exit.x,0,exit.z);
+  world.add(portal);
+  exitLight=new THREE.PointLight(0xd3a861,2.3,4,2);
+  exitLight.position.set(exit.x,1.7,exit.z);world.add(exitLight);
+}
+function updateExit() {
+  exitIndicators.forEach((material,i)=>material.color.setHex(i<rescued?0x52ffbc:0x594b2c));
+  if(rescued!==GOAL) return;
+  exitMaterial.color.setHex(0x1c6650);
+  exitMaterial.emissive.setHex(0x26e5a4);
+  exitMaterial.emissiveIntensity=.75;
+  exitSignMaterial.color.setHex(0x84ffca);
+  exitEdges.forEach(material=>material.color.setHex(0x4affbf));
+  exitLight.color.setHex(0x38ffc1);exitLight.intensity=5;
+  exitOpening=true;
+  notice(text('ready'));
+  gameAudio.play('rescue',.35,1.25);
 }
 function buildWorld() {
   clearWorld();
@@ -240,6 +313,7 @@ function buildWorld() {
   const dummy=new THREE.Object3D();
   wallCells.forEach(([x,z],i)=>{dummy.position.set(x,1.5,z);dummy.updateMatrix();walls.setMatrixAt(i,dummy.matrix);});
   walls.instanceMatrix.needsUpdate=true; world.add(walls);
+  wallMesh=walls;
   const panelMat=new THREE.MeshBasicMaterial({color:0xf6edc0});
   let fixtureCount=0, pointCount=0;
   for(let z=1;z<N-1;z++) for(let x=1;x<N-1;x++) if(!grid[z][x] && (x+z*3)%13===0 && fixtureCount<18) {
@@ -249,16 +323,11 @@ function buildWorld() {
       const light=new THREE.PointLight(0xffe7ad,9,6,2);light.position.set(x,2.7,z);world.add(light);pointCount++;
     }
   }
-  const portal=new THREE.Group();
-  exitMaterial=new THREE.MeshBasicMaterial({color:0x9d874c,side:THREE.DoubleSide,transparent:true,opacity:.75});
-  const plane=new THREE.Mesh(new THREE.PlaneGeometry(.95,1.72),exitMaterial);
-  plane.position.y=.88; portal.add(plane);
-  const arch=new THREE.Mesh(new THREE.TorusGeometry(.63,.055,6,32,Math.PI),new THREE.MeshBasicMaterial({color:0xd6c388}));
-  arch.position.y=1.72; portal.add(arch);
-  portal.position.set(exit.x,.02,exit.z); world.add(portal);
-  exitLight=new THREE.PointLight(0xc7a970,3,4,2);exitLight.position.set(exit.x,1.45,exit.z);world.add(exitLight);
+  makeExit();
   friends=data.selected.map((p,i)=>{ const mesh=character('mouse');mesh.position.set(p.x,0,p.z);world.add(mesh);return {x:p.x,z:p.z,mesh,phase:i*2.1}; });
-  enemies=data.enemySpots.map((p,i)=>{ const mesh=character('egg');mesh.position.set(p.x,0,p.z);world.add(mesh);return {x:p.x,z:p.z,mesh,hp:2,path:[],think:i*.22,attack:0,phase:i*1.8,state:'idle',chaseTime:0,chaseDistance:0,rest:0,lastSeen:null}; });
+  enemies=data.enemySpots.map((p,i)=>{ const mesh=character('egg');mesh.position.set(p.x,0,p.z);world.add(mesh);
+    return {x:p.x,z:p.z,mesh,path:[],think:i*.22,attack:0,phase:i*1.8,state:'patrol',
+      faceX:0,faceZ:1,stun:0,wait:i*.5,memory:0,searchTime:0,lastKnown:null}; });
   px=1; pz=1;
   const first=neighbors(1,1)[0]; yaw=first?Math.atan2(-(first[0]-1),-(first[1]-1)):0; pitch=0;
   camera.position.set(px,EYE,pz); camera.rotation.set(pitch,yaw,0,'YXZ');
@@ -318,27 +387,7 @@ function sync() {
   hud();
 }
 function showMask(newPhase) { phase=newPhase;mask.classList.remove('hide');screen.classList.remove('playing');sync(); }
-function audioStart() {
-  try {
-    if(!audio) {
-      audio=new (window.AudioContext||window.webkitAudioContext)();
-      hum=audio.createOscillator();hum.type='sawtooth';hum.frequency.value=57;
-      const filter=audio.createBiquadFilter();filter.type='lowpass';filter.frequency.value=115;
-      humGain=audio.createGain();humGain.gain.value=audioPrefs.music?.018:0;
-      hum.connect(filter);filter.connect(humGain);humGain.connect(audio.destination);hum.start();
-    }
-    audio.resume();
-  } catch(e) {}
-}
-function sound(freq,dur=.08,type='sine',vol=.08) {
-  if(!audioPrefs.sfx || !audio || audio.state!=='running') return;
-  const osc=audio.createOscillator(),gain=audio.createGain();
-  osc.type=type;osc.frequency.setValueAtTime(freq,audio.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(Math.max(40,freq*.58),audio.currentTime+dur);
-  gain.gain.setValueAtTime(vol,audio.currentTime);
-  gain.gain.exponentialRampToValueAtTime(.001,audio.currentTime+dur);
-  osc.connect(gain);gain.connect(audio.destination);osc.start();osc.stop(audio.currentTime+dur);
-}
+function emitNoise(x,z,radius) { enemies.forEach(enemy=>hearNoise(enemy,x,z,radius)); }
 function lockPointer() {
   if(!canvas.requestPointerLock) return;
   try {
@@ -352,10 +401,11 @@ function start() {
   if(phase!=='paused' && phase!=='intro') {
     rng=seeded((Date.now()^Math.floor(Math.random()*0xffffffff))>>>0);
     buildWorld();hp=100;milk=12;rescued=0;elapsed=0;stepClock=0;
+    doorNoticeCooldown=0;spottedNoticeCooldown=0;
   }
   phase='play';running=true;screen.classList.add('playing');mask.classList.add('hide');
   hadPointerLock=false;
-  lastTime=performance.now();audioStart();hud();
+  lastTime=performance.now();gameAudio.start();hud();
   if(!matchMedia('(pointer:coarse)').matches) lockPointer();
   if(!raf) raf=requestAnimationFrame(frame);
 }
@@ -364,35 +414,36 @@ function pause() {
   running=false;if(raf){cancelAnimationFrame(raf);raf=0;}
   showMask('paused');
   if(document.pointerLockElement===canvas) document.exitPointerLock();
-  if(audio) audio.suspend();
+  gameAudio.pause();
 }
 function end(win) {
   running=false;if(raf){cancelAnimationFrame(raf);raf=0;}
   showMask(win?'win':'lose');
   if(document.pointerLockElement===canvas) document.exitPointerLock();
-  sound(win?700:120,.45,'sawtooth',.12);
-  if(audio) setTimeout(()=>{if(!running) audio.suspend();},500);
+  gameAudio.play(win?'rescue':'growl',win?.55:.35);
+  setTimeout(()=>{if(!running) gameAudio.pause();},800);
 }
 function shoot() {
   if(!running) return;
-  if(milk<=0) {notice(text('empty'));sound(100,.05);return;}
-  milk--;shotFlash=.12;sound(290,.14,'sawtooth',.11);hud();
-  const fx=-Math.sin(yaw),fz=-Math.cos(yaw);
-  let target=null,best=8,blocked=false;
-  for(const e of enemies) {
-    const dx=e.x-px,dz=e.z-pz,d=Math.hypot(dx,dz);
-    if(d>7 || d<.1) continue;
-    const dot=(dx*fx+dz*fz)/d;
-    if(dot<Math.max(.94,1-.11/d)) continue;
-    if(!lineClear(px,pz,e.x,e.z)) {blocked=true;continue;}
-    if(d<best){best=d;target=e;}
-  }
+  if(milk<=0) {notice(text('empty'));return;}
+  milk--;shotFlash=.12;gameAudio.play('splash',.5,.95+rng()*.12);hud();
+  emitNoise(px,pz,8);
+  camera.updateMatrixWorld(true);
+  const origin=camera.position;
+  const direction=camera.getWorldDirection(new THREE.Vector3());
+  const raycaster=new THREE.Raycaster(origin,direction,0,7);
+  const wallDistance=wallMesh ? (raycaster.intersectObject(wallMesh,false)[0]?.distance ?? Infinity) : Infinity;
+  const {target,blocked}=findShotTarget(origin,direction,wallDistance,enemies);
   if(target) {
-    target.hp--;target.mesh.scale.setScalar(.8);sound(130,.12,'square',.09);
-    if(target.hp<=0){world.remove(target.mesh);enemies.splice(enemies.indexOf(target),1);notice(text('hit'));}
+    stunEnemy(target);target.mesh.scale.setScalar(.83);
+    const nx=target.x+direction.x*.42,nz=target.z+direction.z*.42;
+    if(clearAt(nx,target.z)) target.x=nx;
+    if(clearAt(target.x,nz)) target.z=nz;
+    gameAudio.play('growl',.22,.8);notice(text('hit'));
   } else if(blocked) notice(text('blocked'));
 }
 function move(dt) {
+  doorNoticeCooldown=Math.max(0,doorNoticeCooldown-dt);
   let forward=(keys.w||keys.ArrowUp?1:0)-(keys.s||keys.ArrowDown?1:0)-joyY;
   let strafe=(keys.d?1:0)-(keys.a?1:0)+joyX;
   if(keys.ArrowLeft) yaw+=dt*1.9;
@@ -406,7 +457,8 @@ function move(dt) {
     if(clearAt(px+dx,pz)) px+=dx;
     if(clearAt(px,pz+dz)) pz+=dz;
     stepClock+=dt*speed;
-    if(stepClock>1.15){stepClock=0;sound(78,.045,'triangle',.018);}
+    if(stepClock>1.15){stepClock=0;gameAudio.play('step',.3,.92+rng()*.16);
+      emitNoise(px,pz,(keys.Shift||sprintTouch)?5.5:1.8);}
   }
   camera.position.set(px,EYE+(moving?Math.sin(elapsed*speed*9)*.024:0),pz);
   camera.rotation.set(pitch,yaw,0,'YXZ');
@@ -416,62 +468,34 @@ function move(dt) {
     f.mesh.rotation.y=Math.sin(elapsed+f.phase)*.22;
     if(Math.hypot(f.x-px,f.z-pz)<.72) {
       world.remove(f.mesh);friends.splice(i,1);rescued++;milk=Math.min(18,milk+3);
-      sound(620,.14);setTimeout(()=>sound(880,.14),90);
+      gameAudio.play('rescue',.4,1+.06*rescued);
       notice(text('save').replace('{n}',rescued));hud();
-      if(rescued===GOAL) {
-        exitMaterial.color.setHex(0x3fffc1);exitMaterial.opacity=.85;
-        exitLight.color.setHex(0x2dffc1);exitLight.intensity=10;
-        notice(text('ready'));
-      }
+      updateExit();
     }
   }
-  if(rescued===GOAL && Math.hypot(exit.x-px,exit.z-pz)<.8) end(true);
+  const exitDistance=Math.hypot(exit.x-px,exit.z-pz);
+  if(rescued===GOAL && exitDoor.position.y>1.8 && exitDistance<.8) end(true);
+  else if(rescued<GOAL && exitDistance<1 && doorNoticeCooldown===0) {
+    notice(text('locked'));doorNoticeCooldown=4;
+  }
 }
 function updateEnemies(dt) {
+  spottedNoticeCooldown=Math.max(0,spottedNoticeCooldown-dt);
+  const env={px,pz,lineClear,route,neighbors,clearAt,random:rng};
   for(const e of enemies) {
-    e.think-=dt;e.attack-=dt;
-    const dist=Math.hypot(e.x-px,e.z-pz);
-    const seesPlayer=dist<5.2 && lineClear(e.x,e.z,px,pz);
-    if(e.state==='rest') {
-      e.rest-=dt;
-      if(e.rest<=0 && dist>3.4) e.state='idle';
-    } else if(e.state==='idle' && seesPlayer) {
-      e.state='alert';e.think=.4;e.path=[];
-      e.lastSeen={x:Math.round(px),z:Math.round(pz)};
-      notice(text('spotted'));sound(190,.28,'sawtooth',.07);
-    } else if(e.state==='alert' && e.think<=0) {
-      e.state='chase';e.think=0;e.chaseTime=0;e.chaseDistance=0;
-    }
-
-    if(e.state==='chase') {
-      e.chaseTime+=dt;
-      if(seesPlayer) e.lastSeen={x:Math.round(px),z:Math.round(pz)};
-      if(e.think<=0) {
-        e.think=.42;
-        const target=e.lastSeen;
-        e.path=target?route(Math.round(e.x),Math.round(e.z),target.x,target.z):[];
-      }
-      const next=e.path[0];
-      if(next) {
-        const dx=next.x-e.x,dz=next.z-e.z,d=Math.hypot(dx,dz);
-        if(d<.12) e.path.shift();
-        else {
-          const step=Math.min(d,dt*.82);
-          const nx=e.x+dx/d*step,nz=e.z+dz/d*step;
-          if(cellAt(nx,nz)) {e.x=nx;e.z=nz;e.chaseDistance+=step;}
-        }
-      }
-      if(e.chaseTime>=4 || e.chaseDistance>=2.7 || (!seesPlayer && !e.path.length)) {
-        e.state='rest';e.rest=3.5;e.path=[];
-      }
+    const result=stepEnemy(e,dt,env);
+    if(result.spotted && spottedNoticeCooldown===0) {
+      notice(text('spotted'));gameAudio.play('growl',.45,.9);spottedNoticeCooldown=2;
     }
     e.mesh.position.set(e.x,.03+Math.sin(elapsed*2+e.phase)*.025,e.z);
-    if(e.state==='alert' || e.state==='chase') e.mesh.rotation.y=Math.atan2(px-e.x,pz-e.z);
+    e.mesh.rotation.y=Math.atan2(e.faceX,e.faceZ);
+    const ring=e.mesh.children[1];
+    ring.material.color.setHex(e.state==='stunned'?0x8cd8ff:
+      e.state==='chase'?0xff483d:e.state==='alert'?0xffb54b:0xc94634);
     const scale=e.mesh.scale.x+(1-e.mesh.scale.x)*Math.min(1,dt*6);
     e.mesh.scale.setScalar(scale);
-    if(e.state==='chase' && Math.hypot(e.x-px,e.z-pz)<.68 && e.attack<=0) {
-      e.attack=1.25;e.state='rest';e.rest=3.5;e.path=[];
-      hp-=17;damageFlash=.35;sound(90,.3,'sawtooth',.13);hud();
+    if(result.attacked) {
+      hp-=20;damageFlash=.35;gameAudio.play('growl',.42,.72);hud();
       if(hp<=0){end(false);return;}
     }
   }
@@ -482,6 +506,7 @@ function frame(t) {
   if(document.hidden){raf=requestAnimationFrame(frame);return;}
   elapsed+=dt;move(dt);
   if(!running) return;
+  if(exitOpening) exitDoor.position.y=Math.min(2.7,exitDoor.position.y+dt*1.7);
   updateEnemies(dt);
   shotFlash=Math.max(0,shotFlash-dt);damageFlash=Math.max(0,damageFlash-dt);
   document.querySelector('.br-vignette').style.background=damageFlash>0
@@ -496,7 +521,7 @@ function frame(t) {
 function enter(preferences) {
   const currentEntry=++entryId;
   audioPrefs={music:preferences?.music!==false,sfx:preferences?.sfx!==false};
-  if(humGain) humGain.gain.value=audioPrefs.music?.018:0;
+  gameAudio.setPreferences(audioPrefs);gameAudio.prepare();
   open=true;phase='intro';screen.classList.remove('playing');
   ui.start.disabled=false;
   if(!init()) {
@@ -521,7 +546,7 @@ function leave() {
   open=false;running=false;phase='intro';screen.classList.remove('playing');
   if(raf){cancelAnimationFrame(raf);raf=0;}
   if(document.pointerLockElement===canvas) document.exitPointerLock();
-  if(audio) audio.suspend();
+  gameAudio.stop();
   clearWorld();
   Object.keys(keys).forEach(k=>delete keys[k]);joyX=joyY=0;sprintTouch=false;
 }
@@ -588,4 +613,5 @@ runButton.addEventListener('pointerdown',e=>{e.preventDefault();sprintTouch=true
 runButton.addEventListener('pointerup',()=>{sprintTouch=false;});
 runButton.addEventListener('pointercancel',()=>{sprintTouch=false;});
 ui.start.addEventListener('click',start);
-window.Backrooms3D={open:enter,stop:leave,pause,debug:()=>({hp,milk,rescued,enemies:enemies.length,friends:friends.length,exit,px,pz,phase})};
+window.Backrooms3D={open:enter,stop:leave,pause,debug:()=>({hp,milk,rescued,
+  enemies:enemies.map(e=>({x:e.x,z:e.z,state:e.state})),friends:friends.length,exit,px,pz,phase})};
