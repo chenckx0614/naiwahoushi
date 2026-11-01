@@ -74,7 +74,7 @@ let flashlightOn=true;
 const lockerView=document.getElementById('br-locker-view');
 let lockerSoundClock=0;
 const gameAudio=createGameAudio();
-let open = false, running = false, phase = 'intro', hadPointerLock = false;
+let open = false, running = false, phase = 'intro', hadPointerLock = false, lockAttempted=false;
 let hp = 100, milk = 12, stamina=100, sprintExhausted=false, rescued = 0, elapsed = 0, shotFlash = 0, damageFlash = 0;
 let yaw = 0, pitch = 0, px = 1, pz = 1, joyX = 0, joyY = 0, sprintTouch = false;
 let lastTime = 0, stepClock = 0, toastTimer = 0, doorNoticeCooldown=0, spottedNoticeCooldown=0, threatSoundClock=0, rng = Math.random;
@@ -486,7 +486,7 @@ function start() {
   }
   clearScare();
   phase='play';running=true;screen.classList.add('playing');mask.classList.add('hide');
-  hadPointerLock=false;
+  hadPointerLock=false;lockAttempted=false;
   lastTime=performance.now();gameAudio.start();hud();
   if(!matchMedia('(pointer:coarse)').matches) lockPointer();
   if(!raf) raf=requestAnimationFrame(frame);
@@ -788,9 +788,11 @@ canvas.addEventListener('pointerdown',e=>{
   if(!running) return;
   const point=touchPoint(e);
   if(e.pointerType==='mouse') {
-    if(document.pointerLockElement!==canvas) {
+    if(document.pointerLockElement!==canvas && canvas.requestPointerLock && !lockAttempted) {
+      lockAttempted=true;
       lockPointer();
       canvas._look={id:e.pointerId,x:point.x,y:point.y};
+      return;
     }
     shoot();
   } else if(point.x>canvas.clientWidth*.32) {

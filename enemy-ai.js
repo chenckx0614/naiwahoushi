@@ -145,7 +145,7 @@ export function stepEnemy(enemy,dt,env) {
     }
   }
 
-  if((enemy.state==='chase' || enemy.state==='alert') &&
+  if(!env.hidden && (enemy.state==='chase' || enemy.state==='alert') &&
       distance(enemy.x,enemy.z,px,pz)<.68/scale && enemy.attack<=0) {
     enemy.attack=1.4;enemy.state='search';enemy.searchTime=2;enemy.path=[];attacked=true;
   }

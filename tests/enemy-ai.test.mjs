@@ -58,6 +58,12 @@ test('a locker breaks sight, but a chasing enemy can inspect a nearby locker',()
   assert.equal(result.attacked,false);
 });
 
+test('an alert enemy cannot hit through a closed locker',()=>{
+  const e=enemy();e.z=3.6;e.state='alert';e.alertTime=1;
+  const result=stepEnemy(e,.1,{...world,hidden:true,hideSpot:{x:0,z:4}});
+  assert.equal(result.attacked,false);
+});
+
 test('enemy records repeated player movement between cells',()=>{
   const e=enemy();
   stepEnemy(e,.1,{...world,pz:3});

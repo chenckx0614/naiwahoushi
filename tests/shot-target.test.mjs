@@ -20,3 +20,9 @@ test('a wider cell keeps shot targeting aligned with world geometry',()=>{
   assert.equal(findShotTarget(scaledOrigin,aim,Infinity,[enemy],cellSize).target,enemy);
   assert.equal(findShotTarget(scaledOrigin,aim,3,[enemy],cellSize).target,null);
 });
+
+test('a level shot from the player eye height hits the taller egg body',()=>{
+  const target={x:1,z:5};
+  const shot=findShotTarget({x:1.65,y:1.18,z:1.65},{x:0,y:0,z:1},Infinity,[target],1.65);
+  assert.equal(shot.target,target);
+});
