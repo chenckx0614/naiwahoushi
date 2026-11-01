@@ -98,7 +98,10 @@ function floorAt(x, z) { return inside(x,z) && grid[z][x] === 0; }
 function cellAt(x, z) { return floorAt(Math.floor(x + .5), Math.floor(z + .5)); }
 function clearAt(x, z) {
   const r = PLAYER_RADIUS/CELL;
-  return cellAt(x-r,z-r) && cellAt(x+r,z-r) && cellAt(x-r,z+r) && cellAt(x+r,z+r) &&
+  const worldX=x*CELL,worldZ=z*CELL;
+  const blockedByLocker=lockers.some(s=>Math.abs(worldX-s.worldX)<s.halfX+PLAYER_RADIUS &&
+    Math.abs(worldZ-s.worldZ)<s.halfZ+PLAYER_RADIUS);
+  return !blockedByLocker && cellAt(x-r,z-r) && cellAt(x+r,z-r) && cellAt(x-r,z+r) && cellAt(x+r,z+r) &&
     (!exit || (rescued===GOAL && exitDoor?.position.y>1.8) || Math.hypot(x-exit.x,z-exit.z)>.49);
 }
 function distance(a,b) { return Math.hypot(a.x-b.x,a.z-b.z); }
@@ -356,9 +359,13 @@ function buildWorld() {
   lockers=[];
   const spots=[];
   for(let z=2;z<N-2;z++) for(let x=2;x<N-2;x++) if(floorAt(x,z) &&
-    neighbors(x,z).length<=2 && distance({x,z},{x:1,z:1})>3 && distance({x,z},exit)>2)
+    neighbors(x,z).length<=2 && distance({x,z},{x:1,z:1})>3 && distance({x,z},exit)>2 &&
+    data.selected.every(f=>distance({x,z},f)>1.5) && data.enemySpots.every(e=>distance({x,z},e)>1.5))
     spots.push({x,z});
-  for(const spot of spots.sort(()=>rng()-.5).slice(0,Math.min(8,spots.length))) {
+  for(let i=spots.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[spots[i],spots[j]]=[spots[j],spots[i]];}
+  for(const spot of spots.slice(0,Math.min(8,spots.length))) {
+    const [dx,dz]=pick([[1,0],[-1,0],[0,1],[0,-1]].filter(([a,b])=>!floorAt(spot.x+a,spot.z+b)));
+    const worldX=(spot.x+dx*.32)*CELL,worldZ=(spot.z+dz*.32)*CELL;
     const locker=new THREE.Group();
     const metal=new THREE.MeshStandardMaterial({color:0x515548,metalness:.55,roughness:.65});
     const body=new THREE.Mesh(new THREE.BoxGeometry(.62,1.8,.38),metal);
@@ -367,8 +374,11 @@ function buildWorld() {
     seam.position.set(0,.9,.2);locker.add(seam);
     for(const x of [-.15,.15]) {const slit=new THREE.Mesh(new THREE.BoxGeometry(.16,.012,.014),seam.material);
       slit.position.set(x,1.35,.205);locker.add(slit);}
-    locker.position.set(spot.x*CELL,0,spot.z*CELL);world.add(locker);
-    lockers.push({...spot,mesh:locker,uses:0});
+    locker.position.set(worldX,0,worldZ);
+    locker.rotation.y=Math.atan2(-dx,-dz);
+    world.add(locker);
+    lockers.push({...spot,worldX,worldZ,accessX:worldX-dx*.4,accessZ:worldZ-dz*.4,
+      halfX:dx?.19:.31,halfZ:dz?.19:.31,mesh:locker,uses:0});
   }
   let fixtureCount=0, pointCount=0;
   for(let z=1;z<N-1;z++) for(let x=1;x<N-1;x++) if(!grid[z][x] && (x+z*3)%13===0 && fixtureCount<18) {
@@ -510,7 +520,7 @@ function clearScare() {
 function toggleHide() {
   if(!running) return;
   if(hidden) {hidden=false;hideSpot=null;lockerView.classList.remove('active');gameAudio.cue('power');notice(text('unhide'));return;}
-  const spot=lockers.find(s=>Math.hypot(s.x-px,s.z-pz)*CELL<1.15);
+  const spot=lockers.find(s=>Math.hypot(s.accessX-px*CELL,s.accessZ-pz*CELL)<.85);
   if(!spot) return;
   hidden=true;hideSpot=spot;spot.uses++;
   lockerView.classList.add('active');gameAudio.cue('power');
@@ -582,7 +592,8 @@ function move(dt) {
       emitNoise(px,pz,sprinting?5.5:1.8);}
   }
   camera.position.set(px*CELL,EYE+(moving?Math.sin(elapsed*speed*CELL*9)*.024:0),pz*CELL);
-  hideButton.classList.toggle('available',running && !hidden && lockers.some(s=>Math.hypot(s.x-px,s.z-pz)*CELL<1.15));
+  hideButton.classList.toggle('available',running && !hidden &&
+    lockers.some(s=>Math.hypot(s.accessX-px*CELL,s.accessZ-pz*CELL)<.85));
   hideButton.classList.toggle('hiding',hidden);
   hideButton.textContent=text(hidden?'unhide':'hide');
   document.getElementById('br-stamina').textContent=Math.ceil(stamina);
