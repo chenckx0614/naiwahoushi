@@ -66,3 +66,10 @@ test('enemy records repeated player movement between cells',()=>{
   stepEnemy(e,.1,{...world,pz:4});
   assert.equal(e.learnedRoutes.get('0,3>0,4'),2);
 });
+
+test('blackout shortens enemy sight, while its nearby detection still works',()=>{
+  const far=enemy();
+  assert.equal(stepEnemy(far,.1,{...world,blackout:true}).spotted,false);
+  const near=enemy();
+  assert.equal(stepEnemy(near,.1,{...world,pz:2,blackout:true}).spotted,true);
+});

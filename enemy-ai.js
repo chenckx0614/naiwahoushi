@@ -24,7 +24,8 @@ export function stepEnemy(enemy,dt,env) {
   enemy.think-=dt;
   const d=distance(enemy.x,enemy.z,px,pz);
   const facing=d>0 ? ((px-enemy.x)*enemy.faceX+(pz-enemy.z)*enemy.faceZ)/d : 1;
-  const sees=!env.hidden && d<5.8/scale && (d<1.25/scale || facing>.12 || enemy.state==='chase') &&
+  const sightRange=(env.blackout?2.8:5.8)/scale;
+  const sees=!env.hidden && d<sightRange && (d<1.25/scale || facing>.12 || enemy.state==='chase') &&
     lineClear(enemy.x,enemy.z,px,pz);
   let spotted=false,attacked=false;
 

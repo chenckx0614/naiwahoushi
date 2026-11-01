@@ -61,6 +61,22 @@ export function createGameAudio() {
     gain.gain.value=volume;
     source.connect(gain);gain.connect(context.destination);source.start();
   }
+  function cue(name) {
+    if(!sfx || !context || context.state!=='running') return;
+    const now=context.currentTime;
+    const oscillator=context.createOscillator(),gain=context.createGain();
+    oscillator.type=name==='squeak'?'sine':'sawtooth';
+    const start=name==='squeak'?760:90;
+    oscillator.frequency.setValueAtTime(start,now);
+    oscillator.frequency.exponentialRampToValueAtTime(name==='squeak'?1350:45,now+.11);
+    oscillator.frequency.exponentialRampToValueAtTime(name==='squeak'?610:80,now+.22);
+    gain.gain.setValueAtTime(.0001,now);
+    gain.gain.exponentialRampToValueAtTime(name==='squeak'?.055:.025,now+.025);
+    gain.gain.exponentialRampToValueAtTime(.0001,now+.25);
+    oscillator.connect(gain);gain.connect(context.destination);
+    oscillator.start(now);oscillator.stop(now+.27);
+    oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};
+  }
 
   function start() {
     playing=true;
@@ -78,5 +94,5 @@ export function createGameAudio() {
     if(ambientGain) ambientGain.gain.value=music?.14:0;
     if(music) startAmbient();
   }
-  return {prepare,start,pause,stop,play,setPreferences};
+  return {prepare,start,pause,stop,play,cue,setPreferences};
 }

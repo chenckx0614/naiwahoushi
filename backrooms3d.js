@@ -38,6 +38,8 @@ const copy = {
     locked:'出口锁定 · 还需救出奶鼠',
     loading:'正在准备奶蛋和奶鼠模型…', modelError:'角色模型加载失败，请重新打开游戏。',
     blocked:'前方有墙，牛奶没有命中', empty:'牛奶快用完了', webglError:'无法启动 3D 画面，请检查浏览器是否支持 WebGL。',
+    hide:'E · 躲进柜子',unhide:'离开柜子',hiding:'屏住呼吸，听它的脚步声',
+    remembered:'奶蛋记住了这个柜子的位置',found:'柜门被拉开了！',powerOut:'灯光熄灭了',mouseCry:'远处传来奶鼠的叫声',
   },
   en: {
     back:'BACK TO LOBBY', hp:'HEALTH', milk:'MILK', rescued:'RESCUED', find:'FIND THE LOST MICE',
@@ -52,11 +54,13 @@ const copy = {
     locked:'EXIT LOCKED · RESCUE THE MICE',
     loading:'PREPARING THE EGG AND MOUSE MODELS…', modelError:'Character models failed to load. Please reopen the game.',
     blocked:'THE WALL BLOCKED YOUR SHOT', empty:'LOW ON MILK', webglError:'The 3D scene could not start. Check WebGL support in your browser.',
+    hide:'E · HIDE IN LOCKER',unhide:'LEAVE LOCKER',hiding:'Hold your breath. Listen for footsteps.',
+    remembered:'The egg remembers this locker.',found:'The locker door was pulled open!',powerOut:'THE LIGHTS WENT OUT',mouseCry:'A mouse cries in the distance.',
   },
 };
 const text = key => copy[document.documentElement.lang.startsWith('en') ? 'en' : 'zh'][key];
 
-let renderer, scene, camera, world, wallMesh, grid, exit, exitLight, exitMaterial, exitSignMaterial, exitDoor, torch;
+let renderer, scene, camera, world, wallMesh, grid, exit, exitLight, exitMaterial, exitSignMaterial, exitDoor, torch, baseLight;
 let exitIndicators=[], exitEdges=[], exitOpening=false, friends = [], enemies = [], raf = 0;
 let scareModel=null, scareTime=0, scareCooldown=0;
 const scareOverlay=document.getElementById('br-scare');
@@ -64,6 +68,8 @@ const endingMusic=document.getElementById('entry-music');
 let fluorescents=[];
 let lockers=[], hidden=false, hideSpot=null, powerClock=22, blackout=0, mouseCryClock=0;
 const hideButton=document.getElementById('br-hide');
+const lockerView=document.getElementById('br-locker-view');
+let lockerSoundClock=0;
 const gameAudio=createGameAudio();
 let open = false, running = false, phase = 'intro', hadPointerLock = false;
 let hp = 100, milk = 12, rescued = 0, elapsed = 0, shotFlash = 0, damageFlash = 0;
@@ -389,7 +395,7 @@ function init() {
     renderer.toneMapping=THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure=1.22;
     scene=new THREE.Scene();scene.background=new THREE.Color(0x35321f);
-    scene.add(new THREE.HemisphereLight(0xc5bd96,0x171810,.85));
+    baseLight=new THREE.HemisphereLight(0xc5bd96,0x171810,.85);scene.add(baseLight);
     camera=new THREE.PerspectiveCamera(78,1,.05,55);
     torch=new THREE.SpotLight(0xffedbc,22,11,.48,.56,1.7);
     torch.position.set(0,-.1,0); torch.target.position.set(0,-.06,-1);
@@ -472,11 +478,14 @@ function end(win) {
   clearScare();
   showMask(win?'win':'lose');
   if(document.pointerLockElement===canvas) document.exitPointerLock();
-  gameAudio.pause();
   if(win) {
+    gameAudio.pause();
     endingMusic.currentTime=0;
     endingMusic.play().catch(()=>{});
-  } else gameAudio.play('growl',.35);
+  } else {
+    gameAudio.play('growl',.5,.65);
+    setTimeout(()=>{if(!running && phase==='lose') gameAudio.pause();},650);
+  }
 }
 function clearScare() {
   scareTime=0;
@@ -485,13 +494,14 @@ function clearScare() {
 }
 function toggleHide() {
   if(!running) return;
-  if(hidden) {hidden=false;hideSpot=null;notice('离开柜子');return;}
+  if(hidden) {hidden=false;hideSpot=null;lockerView.classList.remove('active');gameAudio.cue('power');notice(text('unhide'));return;}
   const spot=lockers.find(s=>Math.hypot(s.x-px,s.z-pz)*CELL<1.15);
   if(!spot) return;
   hidden=true;hideSpot=spot;spot.uses++;
+  lockerView.classList.add('active');gameAudio.cue('power');
   emitNoise(px,pz,spot.uses>1?7:2);
-  if(spot.uses>1) notice('奶蛋记住了这个柜子的位置');
-  else notice('屏住呼吸，听它的脚步声');
+  if(spot.uses>1) notice(text('remembered'));
+  else notice(text('hiding'));
 }
 function triggerScare(enemy) {
   if(scareCooldown>0 || !running) return;
@@ -507,7 +517,7 @@ function triggerScare(enemy) {
   damageFlash=.3;
 }
 function shoot() {
-  if(!running) return;
+  if(!running || hidden) return;
   if(milk<=0) {notice(text('empty'));return;}
   milk--;shotFlash=.12;gameAudio.play('splash',.5,.95+rng()*.12);hud();
   emitNoise(px,pz,8);
@@ -546,8 +556,9 @@ function move(dt) {
   camera.position.set(px*CELL,EYE+(moving?Math.sin(elapsed*speed*CELL*9)*.024:0),pz*CELL);
   hideButton.classList.toggle('available',running && !hidden && lockers.some(s=>Math.hypot(s.x-px,s.z-pz)*CELL<1.15));
   hideButton.classList.toggle('hiding',hidden);
-  hideButton.textContent=hidden?'离开柜子':'E · 躲进柜子';
+  hideButton.textContent=text(hidden?'unhide':'hide');
   camera.rotation.set(pitch,yaw,0,'YXZ');
+  if(hidden) return;
   for(let i=friends.length-1;i>=0;i--) {
     const f=friends[i];
     f.mesh.position.y=.08+Math.sin(elapsed*2+f.phase)*.08;
@@ -567,10 +578,10 @@ function move(dt) {
 }
 function updateEnemies(dt) {
   spottedNoticeCooldown=Math.max(0,spottedNoticeCooldown-dt);
-  const env={px,pz,lineClear,route,neighbors,clearAt,random:rng,scale:CELL,hidden,hideSpot};
+  const env={px,pz,lineClear,route,neighbors,clearAt,random:rng,scale:CELL,hidden,hideSpot,blackout:blackout>0};
   for(const e of enemies) {
     const result=stepEnemy(e,dt,env);
-    if(result.found) {hidden=false;hideSpot=null;notice('柜门被拉开了！');triggerScare(e);}
+    if(result.found) {hidden=false;hideSpot=null;lockerView.classList.remove('active');notice(text('found'));triggerScare(e);}
     if(result.spotted && spottedNoticeCooldown===0) {
       notice(text('spotted'));gameAudio.play('growl',.45,.9);spottedNoticeCooldown=2;threatSoundClock=5;
     }
@@ -598,13 +609,14 @@ function updateEnemies(dt) {
 }
 function updateAtmosphere(dt) {
   powerClock-=dt;
-  if(powerClock<=0 && blackout<=0) {blackout=4+rng()*3;powerClock=28+rng()*20;notice('灯光熄灭了');gameAudio.play('growl',.12,.45);}
+  if(powerClock<=0 && blackout<=0) {blackout=4+rng()*3;powerClock=28+rng()*20;notice(text('powerOut'));gameAudio.cue('power');}
   blackout=Math.max(0,blackout-dt);
+  baseLight.intensity=blackout>0?.18:.85;
   mouseCryClock-=dt;
   if(mouseCryClock<=0 && friends.length) {
     const friend=pick(friends);
     emitNoise(friend.x,friend.z,7);
-    if(Math.hypot(friend.x-px,friend.z-pz)*CELL<9) {notice('远处传来奶鼠的叫声');gameAudio.play('rescue',.16,1.6);}
+    if(Math.hypot(friend.x-px,friend.z-pz)*CELL<9) {notice(text('mouseCry'));gameAudio.cue('squeak');}
     mouseCryClock=12+rng()*12;
   }
   let nearest=Infinity;
@@ -623,8 +635,12 @@ function updateAtmosphere(dt) {
   const red=damageFlash>0?Math.min(.7,.4+damageFlash):threat*(.12+.09*pulse);
   const edge=red>0?`rgba(72,8,8,${.48+red})`:'rgba(0,0,0,.68)';
   document.querySelector('.br-vignette').style.background=
-    hidden?'radial-gradient(ellipse at center,rgba(0,0,0,.88) 5%,#000 100%)':
     `radial-gradient(ellipse at center,${blackout>0?'rgba(0,0,0,.35)':'transparent'} 35%,rgba(0,0,0,.5) 72%,${edge} 100%)`;
+  lockerSoundClock=Math.max(0,lockerSoundClock-dt);
+  if(hidden && nearest<4 && lockerSoundClock===0) {
+    gameAudio.play('step',Math.max(.12,(4-nearest)*.1),.68);
+    lockerSoundClock=.7+rng()*.45;
+  }
   document.querySelector('.br-scanlines').style.opacity=String(.48+threat*.2);
   threatSoundClock=Math.max(0,threatSoundClock-dt);
   if(threat>.65 && threatSoundClock===0) {
@@ -692,6 +708,7 @@ function leave() {
   gameAudio.stop();
   clearScare();endingMusic.pause();endingMusic.currentTime=0;
   hidden=false;hideSpot=null;hideButton.classList.remove('available','hiding');
+  lockerView.classList.remove('active');
   clearWorld();
   Object.keys(keys).forEach(k=>delete keys[k]);joyX=joyY=0;sprintTouch=false;
 }
