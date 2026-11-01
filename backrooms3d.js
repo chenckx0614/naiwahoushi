@@ -53,13 +53,14 @@ const copy = {
 };
 const text = key => copy[document.documentElement.lang.startsWith('en') ? 'en' : 'zh'][key];
 
-let renderer, scene, camera, world, wallMesh, grid, exit, exitLight, exitMaterial, exitSignMaterial, exitDoor;
+let renderer, scene, camera, world, wallMesh, grid, exit, exitLight, exitMaterial, exitSignMaterial, exitDoor, torch;
 let exitIndicators=[], exitEdges=[], exitOpening=false, friends = [], enemies = [], raf = 0;
+let fluorescents=[];
 const gameAudio=createGameAudio();
 let open = false, running = false, phase = 'intro', hadPointerLock = false;
 let hp = 100, milk = 12, rescued = 0, elapsed = 0, shotFlash = 0, damageFlash = 0;
 let yaw = 0, pitch = 0, px = 1, pz = 1, joyX = 0, joyY = 0, sprintTouch = false;
-let lastTime = 0, stepClock = 0, toastTimer = 0, doorNoticeCooldown=0, spottedNoticeCooldown=0, rng = Math.random;
+let lastTime = 0, stepClock = 0, toastTimer = 0, doorNoticeCooldown=0, spottedNoticeCooldown=0, threatSoundClock=0, rng = Math.random;
 let audioPrefs = {music:true,sfx:true};
 let lastObjective = '';
 let assetPromise, models, entryId = 0;
@@ -223,7 +224,7 @@ function clearWorld() {
   world.traverse(o=>{ if(o.userData.sharedAsset) return; if(o.geometry) geometries.add(o.geometry); if(o.material) materials.add(o.material); });
   geometries.forEach(g=>g.dispose());
   materials.forEach(m=>{if(m.map)m.map.dispose();m.dispose();});
-  world=null;wallMesh=null;exitDoor=null;exitOpening=false;exitIndicators=[];exitEdges=[];
+  world=null;wallMesh=null;exitDoor=null;exitOpening=false;exitIndicators=[];exitEdges=[];fluorescents=[];
 }
 function makeExit() {
   const portal=new THREE.Group();
@@ -314,24 +315,31 @@ function buildWorld() {
   wallCells.forEach(([x,z],i)=>{dummy.position.set(x,1.5,z);dummy.updateMatrix();walls.setMatrixAt(i,dummy.matrix);});
   walls.instanceMatrix.needsUpdate=true; world.add(walls);
   wallMesh=walls;
-  const panelMat=new THREE.MeshBasicMaterial({color:0xf6edc0});
   let fixtureCount=0, pointCount=0;
   for(let z=1;z<N-1;z++) for(let x=1;x<N-1;x++) if(!grid[z][x] && (x+z*3)%13===0 && fixtureCount<18) {
-    const panel=new THREE.Mesh(new THREE.BoxGeometry(.72,.035,.2),panelMat);
+    const panel=new THREE.Mesh(new THREE.BoxGeometry(.72,.035,.2),
+      new THREE.MeshBasicMaterial({color:0x8d8765}));
     panel.position.set(x,2.958,z); world.add(panel); fixtureCount++;
     if(pointCount<5 && (x+z)%3===0) {
-      const light=new THREE.PointLight(0xffe7ad,9,6,2);light.position.set(x,2.7,z);world.add(light);pointCount++;
+      const light=new THREE.PointLight(0xffe3a3,5.5,5.5,2);
+      light.position.set(x,2.7,z);world.add(light);
+      fluorescents.push({light,panel,phase:rng()*10,faulty:pointCount%2===0});pointCount++;
     }
   }
   makeExit();
   friends=data.selected.map((p,i)=>{ const mesh=character('mouse');mesh.position.set(p.x,0,p.z);world.add(mesh);return {x:p.x,z:p.z,mesh,phase:i*2.1}; });
   enemies=data.enemySpots.map((p,i)=>{ const mesh=character('egg');mesh.position.set(p.x,0,p.z);world.add(mesh);
+    const eyeMaterial=new THREE.MeshBasicMaterial({color:0xff4438});
+    for(const side of [-1,1]) {
+      const eye=new THREE.Mesh(new THREE.SphereGeometry(.045,8,6),eyeMaterial);
+      eye.position.set(side*.14,.62,.33);mesh.add(eye);
+    }
     return {x:p.x,z:p.z,mesh,path:[],think:i*.22,attack:0,phase:i*1.8,state:'patrol',
       faceX:0,faceZ:1,stun:0,wait:i*.5,memory:0,searchTime:0,lastKnown:null}; });
   px=1; pz=1;
   const first=neighbors(1,1)[0]; yaw=first?Math.atan2(-(first[0]-1),-(first[1]-1)):0; pitch=0;
   camera.position.set(px,EYE,pz); camera.rotation.set(pitch,yaw,0,'YXZ');
-  scene.fog=new THREE.FogExp2(0x33311e,.058);
+  scene.fog=new THREE.FogExp2(0x1b1b13,.075);
 }
 function init() {
   if(renderer) return true;
@@ -339,11 +347,11 @@ function init() {
     renderer=new THREE.WebGLRenderer({canvas,antialias:false,powerPreference:'high-performance'});
     renderer.outputColorSpace=THREE.SRGBColorSpace;
     renderer.toneMapping=THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure=1.45;
+    renderer.toneMappingExposure=1.22;
     scene=new THREE.Scene();scene.background=new THREE.Color(0x35321f);
-    scene.add(new THREE.HemisphereLight(0xd7cfa8,0x3c3928,1.5));
+    scene.add(new THREE.HemisphereLight(0xc5bd96,0x171810,.85));
     camera=new THREE.PerspectiveCamera(88,1,.05,35);
-    const torch=new THREE.SpotLight(0xfff1c8,26,10,.6,.65,1.6);
+    torch=new THREE.SpotLight(0xffedbc,22,8.5,.43,.56,1.7);
     torch.position.set(0,-.1,0); torch.target.position.set(0,-.06,-1);
     camera.add(torch,torch.target);scene.add(camera);
     resize(); return true;
@@ -401,7 +409,7 @@ function start() {
   if(phase!=='paused' && phase!=='intro') {
     rng=seeded((Date.now()^Math.floor(Math.random()*0xffffffff))>>>0);
     buildWorld();hp=100;milk=12;rescued=0;elapsed=0;stepClock=0;
-    doorNoticeCooldown=0;spottedNoticeCooldown=0;
+    doorNoticeCooldown=0;spottedNoticeCooldown=0;threatSoundClock=0;
   }
   phase='play';running=true;screen.classList.add('playing');mask.classList.add('hide');
   hadPointerLock=false;
@@ -485,19 +493,44 @@ function updateEnemies(dt) {
   for(const e of enemies) {
     const result=stepEnemy(e,dt,env);
     if(result.spotted && spottedNoticeCooldown===0) {
-      notice(text('spotted'));gameAudio.play('growl',.45,.9);spottedNoticeCooldown=2;
+      notice(text('spotted'));gameAudio.play('growl',.45,.9);spottedNoticeCooldown=2;threatSoundClock=5;
     }
     e.mesh.position.set(e.x,.03+Math.sin(elapsed*2+e.phase)*.025,e.z);
     e.mesh.rotation.y=Math.atan2(e.faceX,e.faceZ);
     const ring=e.mesh.children[1];
     ring.material.color.setHex(e.state==='stunned'?0x8cd8ff:
       e.state==='chase'?0xff483d:e.state==='alert'?0xffb54b:0xc94634);
+    ring.material.opacity=e.state==='chase'?.5:e.state==='alert'?.35:e.state==='stunned'?.22:.1;
     const scale=e.mesh.scale.x+(1-e.mesh.scale.x)*Math.min(1,dt*6);
     e.mesh.scale.setScalar(scale);
     if(result.attacked) {
       hp-=20;damageFlash=.35;gameAudio.play('growl',.42,.72);hud();
       if(hp<=0){end(false);return;}
     }
+  }
+}
+function updateAtmosphere(dt) {
+  let nearest=Infinity;
+  for(const enemy of enemies) if(enemy.state!=='stunned')
+    nearest=Math.min(nearest,Math.hypot(enemy.x-px,enemy.z-pz));
+  const threat=Math.max(0,Math.min(1,(5.5-nearest)/4.5));
+  const pulse=(Math.sin(elapsed*(3+threat*2))+1)*.5;
+  for(const fixture of fluorescents) {
+    const flicker=fixture.faulty && (Math.sin(elapsed*16+fixture.phase)>.92 ||
+      Math.sin(elapsed*31+fixture.phase*2)>.985);
+    fixture.light.intensity=flicker?.35:5.1+Math.sin(elapsed*2+fixture.phase)*.35;
+    fixture.panel.material.color.setHex(flicker?0x292b21:0xc6bc91);
+  }
+  const torchFlicker=threat>.25 && Math.sin(elapsed*23+Math.sin(elapsed*4)*3)>.94;
+  torch.intensity=(shotFlash>0?34:22)*(torchFlicker?.42:1);
+  const red=damageFlash>0?Math.min(.7,.4+damageFlash):threat*(.12+.09*pulse);
+  const edge=red>0?`rgba(72,8,8,${.48+red})`:'rgba(0,0,0,.68)';
+  document.querySelector('.br-vignette').style.background=
+    `radial-gradient(ellipse at center,transparent 35%,rgba(0,0,0,.5) 72%,${edge} 100%)`;
+  document.querySelector('.br-scanlines').style.opacity=String(.48+threat*.2);
+  threatSoundClock=Math.max(0,threatSoundClock-dt);
+  if(threat>.65 && threatSoundClock===0) {
+    gameAudio.play('growl',.12,.65);threatSoundClock=6+rng()*3;
   }
 }
 function frame(t) {
@@ -509,10 +542,7 @@ function frame(t) {
   if(exitOpening) exitDoor.position.y=Math.min(2.7,exitDoor.position.y+dt*1.7);
   updateEnemies(dt);
   shotFlash=Math.max(0,shotFlash-dt);damageFlash=Math.max(0,damageFlash-dt);
-  document.querySelector('.br-vignette').style.background=damageFlash>0
-    ?`radial-gradient(ellipse at center,transparent 32%,rgba(130,15,12,${.5+damageFlash}) 100%)`
-    :'radial-gradient(ellipse at center,transparent 40%,rgba(0,0,0,.54) 100%)';
-  if(shotFlash>0) camera.children[0].intensity=38; else camera.children[0].intensity=26;
+  updateAtmosphere(dt);
   ui.clock.textContent=String(Math.floor(elapsed/60)).padStart(2,'0')+':'+String(Math.floor(elapsed%60)).padStart(2,'0');
   objective();
   renderer.render(scene,camera);
