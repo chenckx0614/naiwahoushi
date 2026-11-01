@@ -608,7 +608,7 @@ function updateAtmosphere(dt) {
   powerClock-=dt;
   if(powerClock<=0 && blackout<=0) {blackout=4+rng()*3;powerClock=28+rng()*20;notice(text('powerOut'));gameAudio.cue('power');}
   blackout=Math.max(0,blackout-dt);
-  baseLight.intensity=blackout>0?.18:.85;
+  baseLight.intensity=blackout>0?.12:flashlightOn?.85:.45;
   mouseCryClock-=dt;
   if(mouseCryClock<=0 && friends.length) {
     const friend=pick(friends);
@@ -628,13 +628,11 @@ function updateAtmosphere(dt) {
     fixture.light.intensity=blackout>0?.02:flicker?.35:5.1+Math.sin(elapsed*2+fixture.phase)*.35;
     fixture.panel.material.color.setHex(flicker?0x292b21:0xc6bc91);
   }
-  const torchFlicker=threat>.25 && Math.sin(elapsed*23+Math.sin(elapsed*4)*3)>.94;
-  torch.intensity=flashlightOn?(shotFlash>0?34:22)*(torchFlicker?.42:1)*(blackout>0?.25:1):0;
-  if(blackout<=0) baseLight.intensity=flashlightOn?.85:.45;
+  torch.intensity=flashlightOn?(shotFlash>0?34:22):0;
   const red=damageFlash>0?Math.min(.7,.4+damageFlash):threat*(.12+.09*pulse);
   const edge=red>0?`rgba(72,8,8,${.48+red})`:'rgba(0,0,0,.68)';
   document.querySelector('.br-vignette').style.background=
-    `radial-gradient(ellipse at center,${blackout>0?'rgba(0,0,0,.35)':'transparent'} 35%,rgba(0,0,0,.5) 72%,${edge} 100%)`;
+    `radial-gradient(ellipse at center,transparent 35%,rgba(0,0,0,.5) 72%,${edge} 100%)`;
   document.querySelector('.br-scanlines').style.opacity=String(.48+threat*.2);
   threatSoundClock=Math.max(0,threatSoundClock-dt);
   if(threat>.65 && threatSoundClock===0) {
