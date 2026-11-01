@@ -22,6 +22,7 @@ npm run dev
 - 出口锁定时需先救齐奶鼠；门上的三盏灯显示救援进度
 - 键位：`WASD` 移动 · 鼠标上下左右观察 · 点击/`空格` 泼牛奶 · `Shift` 奔跑 · `Esc` 暂停
 - 手机：左侧摇杆移动，右侧滑动观察，🥛 攻击，↟ 奔跑
+- 走廊使用更宽的空间尺寸和较低的玩家视线；主页使用 `image/naiwa.png`，开始探索时播放一次 `bgm/end.mp3`
 
 ## 结构
 
@@ -31,7 +32,9 @@ backrooms3d.js          游戏源码（three.js）
 shot-target.js          准星射击判定
 enemy-ai.js             奶蛋巡逻、警觉、追逐和搜寻逻辑
 game-audio.js           按需加载的环境音乐与事件音效
-audio/                  CC0 音频文件与来源记录
+audio/                  CC0 环境音与效果音，以及来源记录
+bgm/end.mp3             用户提供的开始音频
+image/naiwa.png         用户提供的主页角色图
 naiwa/backrooms3d/      角色模型源文件 naidan.glb / naishu.glb
 scripts/                模型准备与站点构建脚本
 dist/                   构建产物（游戏 JS、优化后的模型和静态页面）
@@ -46,10 +49,11 @@ npm test
 npm run build
 ```
 
-构建会压缩两个角色模型，再生成 `dist/backrooms3d.bundle.js` 和独立的 GLB 文件。`index.html` 会显示游戏 JS 的下载进度；进入关卡时再加载角色模型。GitHub Pages 工作流会运行测试和构建，并只发布 `dist/`。
+构建会压缩两个角色模型，再生成 `dist/backrooms3d.bundle.js` 和独立的 GLB 文件。`index.html` 会显示游戏 JS 的下载进度；进入关卡时会显示角色模型与音频资源的加载进度。GitHub Pages 工作流会运行测试和构建，并只发布 `dist/`。
 
 ## 素材与授权
 
 - three.js：MIT（见 `third-party/three-LICENSE.txt`）
 - 奶蛙/奶蛋/奶鼠模型：本项目自制
-- 音频：CC0，逐文件来源见 `audio/SOURCES.md`
+- `audio/` 中的环境音和效果音：CC0，逐文件来源见 `audio/SOURCES.md`
+- `bgm/end.mp3` 与 `image/naiwa.png`：用户提供

@@ -12,3 +12,11 @@ test('the shot follows vertical aim and respects walls',()=>{
   assert.equal(blocked.target,null);
   assert.equal(blocked.blocked,true);
 });
+
+test('a wider cell keeps shot targeting aligned with world geometry',()=>{
+  const cellSize=1.65;
+  const scaledOrigin={x:cellSize,y:1.32,z:cellSize};
+  const aim={x:0,y:-.15,z:.989};
+  assert.equal(findShotTarget(scaledOrigin,aim,Infinity,[enemy],cellSize).target,enemy);
+  assert.equal(findShotTarget(scaledOrigin,aim,3,[enemy],cellSize).target,null);
+});

@@ -25,3 +25,8 @@ await build({
 await Promise.all(['index.html','favicon.png','apple-touch-icon.png'].map(name=>
   copyFile(join(root,name),join(outDir,name))
 ));
+await Promise.all(['image','bgm'].map(name=>mkdir(join(outDir,name),{recursive:true})));
+await Promise.all([
+  copyFile(join(root,'image','naiwa.png'),join(outDir,'image','naiwa.png')),
+  copyFile(join(root,'bgm','end.mp3'),join(outDir,'bgm','end.mp3')),
+]);
