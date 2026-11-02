@@ -53,7 +53,7 @@ npm run build
 
 ## 网站统计
 
-使用 Cloudflare Web Analytics。打开 Web Analytics，添加未经过 Cloudflare 代理的站点，主机名填 `chenckx0614.github.io`，从 Manage site 复制 JS snippet 中 `data-cf-beacon` 的 `token`。将它保存为 GitHub 仓库变量 `CLOUDFLARE_ANALYTICS_TOKEN`（Settings → Secrets and variables → Actions → Variables）。部署工作流会把追踪脚本放进 `dist/index.html`；未设置变量时不加载统计脚本。本地构建默认不统计。
+百度统计已移除。待取得 51.LA V6 的站点异步统计代码后，将其直接添加到 `index.html` 的 `</head>` 前；构建会将它复制进部署页面。
 
 ## 素材与授权
 
