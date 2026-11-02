@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { copyFile, mkdir, rm } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,9 +22,17 @@ await build({
   minify:true,
 });
 
-await Promise.all(['index.html','favicon.png','apple-touch-icon.png'].map(name=>
+await Promise.all(['favicon.png','apple-touch-icon.png'].map(name=>
   copyFile(join(root,name),join(outDir,name))
 ));
+const siteToken=process.env.CLOUDFLARE_ANALYTICS_TOKEN?.trim();
+if(siteToken && !/^[0-9a-f]{32}$/i.test(siteToken))
+  throw new Error('CLOUDFLARE_ANALYTICS_TOKEN must be the 32-character site token');
+const tracking=siteToken?
+  `<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"${siteToken}"}'></script>`:'';
+const html=await readFile(join(root,'index.html'),'utf8');
+if(!html.includes('<!-- CLOUDFLARE_WEB_ANALYTICS -->')) throw new Error('Analytics insertion point is missing');
+await writeFile(join(outDir,'index.html'),html.replace('<!-- CLOUDFLARE_WEB_ANALYTICS -->',tracking));
 await Promise.all(['image','bgm'].map(name=>mkdir(join(outDir,name),{recursive:true})));
 await Promise.all([
   copyFile(join(root,'image','naiwa.png'),join(outDir,'image','naiwa.png')),

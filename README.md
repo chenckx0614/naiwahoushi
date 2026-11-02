@@ -22,7 +22,7 @@ npm run dev
 - 出口锁定时需先救齐奶鼠；门上的三盏灯显示救援进度
 - 键位：`WASD` 移动 · 鼠标上下左右观察 · 点击/`空格` 泼牛奶 · `Shift` 奔跑 · `Esc` 暂停
 - 手机：左侧摇杆移动，右侧滑动观察，🥛 攻击，↟ 奔跑
-- 走廊使用更宽的空间尺寸和较低的玩家视线；主页使用 `image/naiwa.png`，开始探索时播放一次 `bgm/end.mp3`
+- 走廊使用更宽的空间尺寸和较低的玩家视线；主页使用 `image/naiwa.png`，逃离成功时播放一次 `bgm/end.mp3`
 
 ## 结构
 
@@ -33,7 +33,7 @@ shot-target.js          准星射击判定
 enemy-ai.js             奶蛋巡逻、警觉、追逐和搜寻逻辑
 game-audio.js           按需加载的环境音乐与事件音效
 audio/                  CC0 环境音与效果音，以及来源记录
-bgm/end.mp3             用户提供的开始音频
+bgm/end.mp3             用户提供的逃离成功音频
 image/naiwa.png         用户提供的主页角色图
 naiwa/backrooms3d/      角色模型源文件 naidan.glb / naishu.glb
 scripts/                模型准备与站点构建脚本
@@ -50,6 +50,10 @@ npm run build
 ```
 
 构建会压缩两个角色模型，再生成 `dist/backrooms3d.bundle.js` 和独立的 GLB 文件。`index.html` 会显示游戏 JS 的下载进度；进入关卡时会显示角色模型与音频资源的加载进度。GitHub Pages 工作流会运行测试和构建，并只发布 `dist/`。
+
+## 网站统计
+
+使用 Cloudflare Web Analytics。打开 Web Analytics，添加未经过 Cloudflare 代理的站点，主机名填 `chenckx0614.github.io`，从 Manage site 复制 JS snippet 中 `data-cf-beacon` 的 `token`。将它保存为 GitHub 仓库变量 `CLOUDFLARE_ANALYTICS_TOKEN`（Settings → Secrets and variables → Actions → Variables）。部署工作流会把追踪脚本放进 `dist/index.html`；未设置变量时不加载统计脚本。本地构建默认不统计。
 
 ## 素材与授权
 
