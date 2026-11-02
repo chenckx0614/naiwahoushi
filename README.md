@@ -53,7 +53,7 @@ npm run build
 
 ## 网站统计
 
-百度统计已移除。待取得 51.LA V6 的站点异步统计代码后，将其直接添加到 `index.html` 的 `</head>` 前；构建会将它复制进部署页面。
+百度统计和 Cloudflare Web Analytics 均已移除。当前使用 51.LA V6，统计代码位于 `index.html` 的 `</head>` 前；构建会原样复制进部署页面。本地运行时如不想计入统计，可在 51.LA 后台设置域名强匹配，只允许 `chenckx0614.github.io`。
 
 ## 素材与授权
 
