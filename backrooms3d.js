@@ -6,6 +6,7 @@ import { findShotTarget, MILK_RANGE } from './shot-target.js';
 import { hearNoise, stunEnemy, stepEnemy } from './enemy-ai.js';
 import { createGameAudio } from './game-audio.js';
 import { walkDistances } from './walk-distance.js';
+import { DIFFICULTIES, getDifficulty } from './difficulty.js';
 
 /* Level 0 is deliberately self-contained: the main match-3 game only opens/closes it. */
 const screen = document.getElementById('backrooms-screen');
@@ -81,6 +82,7 @@ let hp = 100, milk = 12, stamina=100, sprintExhausted=false, rescued = 0, elapse
 let yaw = 0, pitch = 0, px = 1, pz = 1, joyX = 0, joyY = 0, sprintTouch = false;
 let lastTime = 0, stepClock = 0, toastTimer = 0, doorNoticeCooldown=0, spottedNoticeCooldown=0, threatSoundClock=0, rng = Math.random;
 let audioPrefs = {music:true,sfx:true};
+let difficultyKey='normal', difficulty=DIFFICULTIES.normal;
 let lastObjective = '';
 let objectiveCache=null;
 let assetPromise, models, entryId = 0, modelProgress=0;
@@ -174,7 +176,15 @@ function generateMap() {
   const enemySpots=[];
   for(const c of candidates) if(c.d>5 && distance(c,{x:1,z:1})>5 && distance(c,exit)>2 && selected.every(f=>distance(c,f)>2)) {
     if(enemySpots.every(e=>distance(e,c)>5)) enemySpots.push(c);
-    if(enemySpots.length===3) break;
+    if(enemySpots.length===difficulty.enemies) break;
+  }
+  if(enemySpots.length<difficulty.enemies) {
+    for(const c of candidates) {
+      if(c.d<5 || distance(c,exit)<2 || selected.some(f=>distance(c,f)<2) ||
+        enemySpots.some(e=>distance(e,c)<3)) continue;
+      enemySpots.push(c);
+      if(enemySpots.length===difficulty.enemies) break;
+    }
   }
   const wallSide=c=>[[1,0],[-1,0],[0,1],[0,-1]].find(([dx,dz])=>!floorAt(c.x+dx,c.z+dz));
   const secret=candidates.find(c=>c.d>=8 && distance(c,exit)>5 &&
@@ -400,7 +410,7 @@ function buildWorld() {
       const eye=new THREE.Mesh(new THREE.SphereGeometry(.045,8,6),eyeMaterial);
       eye.position.set(side*.14,.62,.33);mesh.add(eye);
     }
-    return {x:p.x,z:p.z,mesh,kind:['listener','watcher','warden'][i],path:[],think:i*.22,attack:0,phase:i*1.8,state:'patrol',
+    return {x:p.x,z:p.z,mesh,kind:['listener','watcher','warden','listener'][i],path:[],think:i*.22,attack:0,phase:i*1.8,state:'patrol',
       faceX:0,faceZ:1,stun:0,wait:i*.5,memory:0,searchTime:0,lastKnown:null}; });
   px=1; pz=1;
   const first=neighbors(1,1)[0]; yaw=first?Math.atan2(-(first[0]-1),-(first[1]-1)):0; pitch=0;
@@ -468,7 +478,7 @@ function sync() {
 }
 function showMask(newPhase) { phase=newPhase;mask.classList.remove('hide');screen.classList.remove('playing');
   noclipButton.classList.remove('available');ui.load.classList.add('hide');sync(); }
-function emitNoise(x,z,radius) { enemies.forEach(enemy=>hearNoise(enemy,x,z,radius/CELL)); }
+function emitNoise(x,z,radius) { enemies.forEach(enemy=>hearNoise(enemy,x,z,radius/CELL,difficulty.hearing)); }
 function lockPointer() {
   if(!canvas.requestPointerLock) return;
   try {
@@ -481,7 +491,7 @@ function start() {
   if(!world || !models) {ui.message.textContent=text('loading');return;}
   if(phase!=='paused' && phase!=='intro') {
     rng=seeded((Date.now()^Math.floor(Math.random()*0xffffffff))>>>0);
-    buildWorld();hp=100;milk=12;stamina=100;sprintExhausted=false;rescued=0;elapsed=0;stepClock=0;
+    buildWorld();hp=100;milk=difficulty.startingMilk;stamina=100;sprintExhausted=false;rescued=0;elapsed=0;stepClock=0;
     doorNoticeCooldown=0;spottedNoticeCooldown=0;threatSoundClock=0;
     powerClock=16+rng()*13;blackout=0;mouseCryClock=10;
     screen.classList.remove('finale');flashlightOn=true;
@@ -558,7 +568,7 @@ function shoot() {
   const wallDistance=wallMesh ? (raycaster.intersectObject(wallMesh,false)[0]?.distance ?? Infinity) : Infinity;
   const {target,blocked}=findShotTarget(origin,direction,wallDistance,enemies,CELL);
   if(target) {
-    stunEnemy(target);target.mesh.scale.setScalar(.83);
+    stunEnemy(target,difficulty.stun);target.mesh.scale.setScalar(.83);
     const nx=target.x+direction.x*.42/CELL,nz=target.z+direction.z*.42/CELL;
     if(clearAt(nx,target.z)) target.x=nx;
     if(clearAt(target.x,nz)) target.z=nz;
@@ -590,7 +600,7 @@ function move(dt) {
       emitNoise(px,pz,sprinting?5.5:1.8);}
   }
   const moving=moved>.001;
-  stamina=Math.max(0,Math.min(100,stamina+(moving?(sprinting?-23:8):16)*dt));
+  stamina=Math.max(0,Math.min(100,stamina+(moving?(sprinting?-difficulty.staminaDrain:difficulty.staminaRecovery):16)*dt));
   if(stamina===0) {sprintExhausted=true;sprintTouch=false;}
   camera.position.set(px*CELL,EYE+(moving?Math.sin(elapsed*speed*CELL*9)*.024:0),pz*CELL);
   document.getElementById('br-stamina').textContent=Math.ceil(stamina);
@@ -601,7 +611,7 @@ function move(dt) {
     f.mesh.position.y=.08+Math.sin(elapsed*2+f.phase)*.08;
     f.mesh.rotation.y=Math.sin(elapsed+f.phase)*.22;
     if(Math.hypot(f.x-px,f.z-pz)*CELL<.72) {
-      world.remove(f.mesh);friends.splice(i,1);rescued++;milk=Math.min(18,milk+3);
+      world.remove(f.mesh);friends.splice(i,1);rescued++;milk=Math.min(18,milk+difficulty.rescueMilk);
       gameAudio.play('rescue',.4,1+.06*rescued);
       notice(text('save').replace('{n}',rescued));hud();
       updateExit();
@@ -616,6 +626,7 @@ function move(dt) {
 function updateEnemies(dt) {
   spottedNoticeCooldown=Math.max(0,spottedNoticeCooldown-dt);
   const env={px,pz,lineClear,route,neighbors,clearAt,random:rng,scale:CELL,
+    sightScale:difficulty.sight,speedScale:difficulty.speed,
     blackout:blackout>0,flashlight:flashlightOn,exitReady:rescued===GOAL,exit,
     guardPost:exit?(() => {const p=neighbors(exit.x,exit.z)[0];return p?{x:p[0],z:p[1]}:exit;})():null};
   for(const e of enemies) {
@@ -636,7 +647,7 @@ function updateEnemies(dt) {
       Math.hypot(e.x-px,e.z-pz)*CELL<1.65 && lineClear(e.x,e.z,px,pz)) triggerScare(e);
     if(result.attacked) {
       triggerScare(e);
-      hp-=20;damageFlash=.35;gameAudio.play('growl',.42,.72);hud();
+      hp-=difficulty.damage;damageFlash=.35;gameAudio.play('growl',.42,.72);hud();
       if(hp<=0){
         running=false;
         const deathEntry=entryId;
@@ -750,6 +761,8 @@ function frame(t) {
 }
 function enter(preferences) {
   const currentEntry=++entryId;
+  difficultyKey=getDifficulty(preferences?.difficulty);
+  difficulty=DIFFICULTIES[difficultyKey];
   audioPrefs={music:preferences?.music!==false,sfx:preferences?.sfx!==false};
   gameAudio.setPreferences(audioPrefs);
   open=true;phase='intro';screen.classList.remove('playing');
@@ -761,7 +774,7 @@ function enter(preferences) {
     mask.classList.remove('hide');return;
   }
   clearWorld();friends=[];enemies=[];exit=null;
-  hp=100;milk=12;stamina=100;sprintExhausted=false;rescued=0;elapsed=0;
+  hp=100;milk=difficulty.startingMilk;stamina=100;sprintExhausted=false;rescued=0;elapsed=0;
   sync();mask.classList.remove('hide');
   ui.message.textContent=text('loading');ui.start.disabled=true;
   ui.load.classList.remove('hide');
@@ -875,5 +888,5 @@ runButton.addEventListener('pointerdown',e=>{e.preventDefault();sprintTouch=true
 runButton.addEventListener('pointerup',()=>{sprintTouch=false;});
 runButton.addEventListener('pointercancel',()=>{sprintTouch=false;});
 ui.start.addEventListener('click',start);
-window.Backrooms3D={open:enter,stop:leave,pause,debug:()=>({hp,milk,rescued,
+window.Backrooms3D={open:enter,stop:leave,pause,debug:()=>({hp,milk,rescued,difficulty:difficultyKey,
   enemies:enemies.map(e=>({x:e.x,z:e.z,state:e.state})),friends:friends.length,exit,px,pz,phase})};

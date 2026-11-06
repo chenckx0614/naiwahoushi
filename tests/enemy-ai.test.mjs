@@ -84,3 +84,20 @@ test('warden moves to its exit post during the final escape',()=>{
   assert.equal(warden.state,'guard');
   assert.deepEqual(goal,[6,5]);
 });
+
+test('difficulty changes detection, hearing, and stun duration',()=>{
+  const cautious=enemy();
+  assert.equal(stepEnemy(cautious,.1,{...world,pz:5,sightScale:.8}).spotted,false);
+  const dangerous=enemy();
+  assert.equal(stepEnemy(dangerous,.1,{...world,pz:5,sightScale:1.2}).spotted,true);
+  const quiet=enemy();
+  hearNoise(quiet,2,0,2,.8);
+  assert.equal(quiet.state,'patrol');
+  const loud=enemy();
+  hearNoise(loud,2,0,2,1.2);
+  assert.equal(loud.state,'investigate');
+  const stunned=enemy();
+  stunEnemy(stunned,4);
+  stepEnemy(stunned,3.1,world);
+  assert.equal(stunned.state,'stunned');
+});

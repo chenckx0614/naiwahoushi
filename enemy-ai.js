@@ -1,9 +1,9 @@
 function distance(x1,z1,x2,z2) { return Math.hypot(x1-x2,z1-z2); }
 
-export function hearNoise(enemy,x,z,radius) {
+export function hearNoise(enemy,x,z,radius,hearingScale=1) {
   if(['stunned','alert','chase'].includes(enemy.state)) return;
   const hearing=enemy.kind==='listener'?1.7:enemy.kind==='watcher'?.65:1;
-  if(distance(enemy.x,enemy.z,x,z)>radius*hearing) return;
+  if(distance(enemy.x,enemy.z,x,z)>radius*hearing*hearingScale) return;
   enemy.state='investigate';
   enemy.lastKnown={x:Math.round(x),z:Math.round(z)};
   enemy.memory=5;
@@ -11,9 +11,9 @@ export function hearNoise(enemy,x,z,radius) {
   enemy.path=[];
 }
 
-export function stunEnemy(enemy) {
+export function stunEnemy(enemy,duration=3) {
   enemy.state='stunned';
-  enemy.stun=Math.min(5,enemy.stun+3);
+  enemy.stun=Math.min(5,enemy.stun+duration);
   enemy.path=[];
   enemy.think=0;
 }
@@ -26,7 +26,7 @@ export function stepEnemy(enemy,dt,env) {
   const d=distance(enemy.x,enemy.z,px,pz);
   const facing=d>0 ? ((px-enemy.x)*enemy.faceX+(pz-enemy.z)*enemy.faceZ)/d : 1;
   const sight=enemy.kind==='watcher'?7.2:enemy.kind==='listener'?4.1:5.8;
-  const sightRange=(env.blackout?sight*.48:env.flashlight?sight*1.25:sight*.72)/scale;
+  const sightRange=(env.blackout?sight*.48:env.flashlight?sight*1.25:sight*.72)*(env.sightScale||1)/scale;
   const sees=d<sightRange && (d<1.25/scale || facing>.12 || enemy.state==='chase' ||
     (enemy.kind==='watcher' && env.flashlight)) &&
     lineClear(enemy.x,enemy.z,px,pz);
@@ -93,7 +93,7 @@ export function stepEnemy(enemy,dt,env) {
     if(sees) enemy.memory=4.5;
     else enemy.memory-=dt;
     if(enemy.memory<=0) {enemy.state='search';enemy.searchTime=4;enemy.path=[];}
-    else if(sees && d<2.4/scale) {enemy.path=[];moveToward(px,pz,2.75/scale);}
+    else if(sees && d<2.4/scale) {enemy.path=[];moveToward(px,pz,2.75*(env.speedScale||1)/scale);}
     else {
       if(!sees && enemy.lastKnown && enemy.learnedRoutes?.size) {
         const prefix=`${enemy.lastKnown.x},${enemy.lastKnown.z}>`;
@@ -105,15 +105,15 @@ export function stepEnemy(enemy,dt,env) {
         }
       }
       if(enemy.think<=0) {enemy.think=.35;setPath(enemy.lastKnown);}
-      followPath(2.5/scale);
+      followPath(2.5*(env.speedScale||1)/scale);
     }
   } else if(enemy.state==='guard') {
     if(enemy.think<=0) {enemy.think=1;setPath(env.guardPost||env.exit);}
-    followPath(1.15/scale);
+    followPath(1.15*(env.speedScale||1)/scale);
   } else if(enemy.state==='investigate') {
     enemy.memory-=dt;
     if(enemy.think<=0) {enemy.think=.7;setPath(enemy.lastKnown);}
-    const arrived=followPath((env.exitReady?1.9:1.2)/scale);
+    const arrived=followPath((env.exitReady?1.9:1.2)*(env.speedScale||1)/scale);
     if(arrived || enemy.memory<=0) {
       enemy.state=enemy.kind==='warden' && env.exitReady?'guard':'search';
       enemy.searchTime=3.5;enemy.path=[];
@@ -123,13 +123,13 @@ export function stepEnemy(enemy,dt,env) {
     if(enemy.searchTime<=0) {enemy.state='patrol';enemy.path=[];enemy.wait=.3;}
     else {
       if(!enemy.path.length) wander();
-      followPath(.95/scale);
+      followPath(.95*(env.speedScale||1)/scale);
     }
   } else if(enemy.state==='patrol') {
     enemy.wait-=dt;
     if(enemy.wait<=0) {
       if(!enemy.path.length) wander();
-      if(followPath(.72/scale)) enemy.wait=.4+random()*.7;
+      if(followPath(.72*(env.speedScale||1)/scale)) enemy.wait=.4+random()*.7;
     }
   }
 

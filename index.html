@@ -200,6 +200,22 @@
     border-top:1px solid rgba(218,203,141,.34); color:#b6ae8c;
     font:700 10px 'Consolas','Courier New',monospace; letter-spacing:.12em; }
   .lobby-brief b { color:#f1df9b; font-size:15px; margin-right:6px; }
+  .lobby-difficulty { margin:0 0 19px; padding:0; border:0; min-width:0; }
+  .lobby-difficulty legend { margin:0 0 8px; padding:0; color:#d7c87e;
+    font:700 10px 'Consolas','Courier New',monospace; letter-spacing:.22em; }
+  .difficulty-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; max-width:440px; }
+  .difficulty-option { position:relative; min-width:0; }
+  .difficulty-option input { position:absolute; width:1px; height:1px; opacity:0; }
+  .difficulty-option label { display:block; min-height:51px; padding:8px 10px; cursor:pointer;
+    border:1px solid rgba(218,203,141,.34); background:rgba(11,15,12,.72);
+    color:#d2c9a5; transition:border-color .18s,background .18s,transform .18s; }
+  .difficulty-option label strong { display:block; font:800 13px 'Microsoft YaHei','PingFang SC',sans-serif; }
+  .difficulty-option label small { display:block; margin-top:2px; color:#aaa181;
+    font:600 9px 'Consolas','Courier New',monospace; letter-spacing:.09em; }
+  .difficulty-option input:checked + label { border-color:#f0dfa0; background:rgba(218,199,125,.16);
+    box-shadow:inset 0 0 0 1px rgba(240,223,160,.28),0 0 18px rgba(240,223,160,.07); color:#fff0b7; }
+  .difficulty-option input:focus-visible + label { outline:2px solid #fff0b7; outline-offset:2px; }
+  .difficulty-option label:hover { border-color:#e9d796; transform:translateY(-1px); }
   #lobby-btn {
     min-width:245px; height:58px; padding:0 25px; text-align:left;
     border:1px solid #e9d796; border-radius:2px;
@@ -217,6 +233,9 @@
     #lobby h1 em { margin-top:6px; }
     #lobby p { margin-top:12px; }
     .lobby-brief { margin:13px 0 16px; padding-top:10px; }
+    .lobby-difficulty { margin-bottom:11px; }
+    .difficulty-option label { min-height:42px; padding:5px 8px; }
+    .difficulty-option label strong { font-size:12px; }
     #lobby-btn { height:46px; }
   }
   @media (max-width:690px) and (orientation:landscape) {
@@ -261,6 +280,14 @@
     <h1>蛙后室<em>THE BACKROOMS</em></h1>
     <p>灯还亮着，出口却不在原来的地方。找回 3 只迷路的奶鼠，避开在走廊里巡逻的奶蛋。</p>
     <div class="lobby-brief"><span><b>03</b> 失踪奶鼠</span><span><b>01</b> 逃生出口</span></div>
+    <fieldset class="lobby-difficulty">
+      <legend>选择难度 / THREAT LEVEL</legend>
+      <div class="difficulty-options">
+        <div class="difficulty-option"><input type="radio" name="difficulty" id="difficulty-easy" value="easy"><label for="difficulty-easy"><strong>简单</strong><small>较少威胁</small></label></div>
+        <div class="difficulty-option"><input type="radio" name="difficulty" id="difficulty-normal" value="normal" checked><label for="difficulty-normal"><strong>中等</strong><small>标准记录</small></label></div>
+        <div class="difficulty-option"><input type="radio" name="difficulty" id="difficulty-hard" value="hard"><label for="difficulty-hard"><strong>困难</strong><small>高危区域</small></label></div>
+      </div>
+    </fieldset>
     <button id="lobby-btn">开始探索 <span>→</span></button>
   </div>
   <div class="lobby-bottom"><span>WASD / MOVE · MOUSE / LOOK</span><span>REC ● 00:00:00</span></div>
@@ -325,7 +352,8 @@ $('lobby-btn').addEventListener('click', function(){
     backToLobby();
     return;
   }
-  window.Backrooms3D.open({ music:true, sfx:true });
+  window.Backrooms3D.open({ music:true, sfx:true,
+    difficulty:document.querySelector('input[name="difficulty"]:checked').value });
 });
 
 /* 启动：fetch 流式下载 3D 包，进度条走真实字节数 */
